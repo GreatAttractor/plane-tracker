@@ -59,8 +59,8 @@ pub struct EsIdentificationAndCategory {
 #[derive(Debug)]
 pub struct EsAirbornePosition {
     pub id: ModeSTransponderCode,
-    pub altitude: Feet,
-    pub lat_lon: LatLon
+    pub altitude: Option<Feet>,
+    pub lat_lon: Option<LatLon>
 }
 
 #[derive(Debug)]
@@ -99,6 +99,7 @@ pub struct Aircraft {
     pub id: ModeSTransponderCode,
     pub callsign: Option<String>,
     pub lat_lon: Option<LatLon>,
+    pub estimated_lat_lon: Option<LatLon>,
     pub track: Option<Deg<f64>>,
     pub altitude: Option<Feet>,
     pub ground_speed: Option<Knots>,
@@ -133,6 +134,7 @@ impl ProgramData {
                 id: msg.id(),
                 callsign: None,
                 lat_lon: None,
+                estimated_lat_lon: None,
                 altitude: None,
                 track: None,
                 ground_speed: None,
@@ -145,8 +147,8 @@ impl ProgramData {
             },
 
             Sbs1Message::EsAirbornePosition(msg) => {
-                entry.altitude = Some(msg.altitude);
-                entry.lat_lon = Some(msg.lat_lon);
+                entry.altitude = msg.altitude;
+                entry.lat_lon = msg.lat_lon;
             },
 
             Sbs1Message::EsAirborneVelocity(msg) => {

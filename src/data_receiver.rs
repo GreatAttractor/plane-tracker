@@ -27,7 +27,7 @@ pub fn data_receiver(sender: gtk::glib::Sender<data::Sbs1Message>) {
         if let Ok(line) = line {
             match parse_sbs1_message(&line) {
                 Ok(m) => if let Some(m) = m { sender.send(m).unwrap(); },
-                Err(e) => println!("Error parsing SBS1 message: {}.", e)
+                Err(e) => println!("Error parsing SBS1 message \"{}\": {}.", line, e)
             }
         }
     }
@@ -78,12 +78,21 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
         },
 
         msg_type::ES_AIRBORNE_POSITION_MESSAGE => {
-            let altitude = Feet(fields[11].parse::<u32>()? as f64);
-            let lat = Deg(fields[14].parse::<f64>()?);
-            let lon = Deg(fields[15].parse::<f64>()?);
+            let altitude = match fields[11].parse::<u32>() {
+                Ok(value) => Some(Feet(value as f64)),
+                _ => None
+            };
+            let lat = fields[14].parse::<f64>();
+            let lon = fields[15].parse::<f64>();
+
+            let lat_lon = match (lat, lon) {
+                (Ok(lat), Ok(lon)) => Some(data::LatLon{ lat: Deg(lat), lon: Deg(lon) }),
+                (Err(_), Err(_)) => None,
+                (Ok(_), Err(e)) | (Err(e), Ok(_)) => return Err(Box::new(e))
+            };
 
             return Ok(Some(data::Sbs1Message::EsAirbornePosition(data::EsAirbornePosition{
-                id, altitude, lat_lon: data::LatLon{ lat, lon }
+                id, altitude, lat_lon
             })));
         },
 
