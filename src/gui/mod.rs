@@ -39,16 +39,16 @@ impl<'a> Drop for RestoreTransform<'a> {
 
 /// `Ctx` uses local frame (Y points up), pixel scale.
 fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
-    const SIZE: f64 = 20.0;
+    const SIZE: f64 = 20.0; // pixels
     const WEDGE_ANGLE: Deg<f64> = Deg(30.0);
 
     let _rt = RestoreTransform::new(ctx);
 
     ctx.rotate(-Rad::from(track).0);
 
-    let p0 = (-Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * SIZE, 0.0);
-    let p1 = (0.0, SIZE);
-    let p2 = (Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * SIZE, 0.0);
+    let p0 = (-Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * SIZE, -SIZE / 2.0);
+    let p1 = (0.0, SIZE / 2.0);
+    let p2 = (Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * SIZE, -SIZE / 2.0);
 
     ctx.move_to(p0.0, p0.1);
     ctx.line_to(p1.0, p1.1);
