@@ -14,6 +14,7 @@ use gtk::glib;
 use gtk::glib::clone;
 use gtk::prelude::*;
 use std::{cell::RefCell, rc::Rc};
+use uom::{si::f64, si::{length, velocity}};
 
 pub struct GuiData {
     pub drawing_area: gtk::DrawingArea
@@ -81,12 +82,12 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft) {
 
     ctx.move_to(HORZ_OFFSET, 2.0 * LINE_SPACING);
     if let Some(altitude) = &aircraft.altitude {
-        ctx.show_text(&format!("{:.0} m", altitude.0 * 0.3048)).unwrap();
+        ctx.show_text(&format!("{:.0} m", altitude.get::<length::meter>())).unwrap();
     }
 
     ctx.move_to(HORZ_OFFSET, 3.0 * LINE_SPACING);
     if let Some(ground_speed) = &aircraft.ground_speed {
-        ctx.show_text(&format!("{:.0} km/h", ground_speed.0 * 1.852)).unwrap();
+        ctx.show_text(&format!("{:.0} km/h", ground_speed.get::<velocity::kilometer_per_hour>())).unwrap();
     }
 
     ctx.move_to(HORZ_OFFSET, 4.0 * LINE_SPACING);

@@ -7,15 +7,24 @@
 //
 
 use cgmath::Deg;
-use crate::{data, data::{Feet, Knots, ProgramData}};
+use crate::{data, data::ProgramData};
 use gtk4 as gtk;
 use std::{cell::RefCell, error::Error, rc::Rc, io::prelude::*};
+use uom::{si::f64, si::{length, velocity}};
 
 mod msg_type {
     pub const ES_IDENTIFICATION_AND_CATEGORY: i32 = 1;
     pub const ES_AIRBORNE_POSITION_MESSAGE: i32 = 3;
     pub const ES_AIRBORNE_VELOCITY_MESSAGE: i32 = 4;
     pub const SURVEILLANCE_ALT_MESSAGE: i32 = 5;
+}
+
+fn feet(value: f64) -> f64::Length {
+    f64::Length::new::<length::foot>(value)
+}
+
+fn knots(value: f64) -> f64::Velocity {
+    f64::Velocity::new::<velocity::knot>(value)
 }
 
 pub fn data_receiver(sender: gtk::glib::Sender<data::Sbs1Message>) {
@@ -79,7 +88,7 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
 
         msg_type::ES_AIRBORNE_POSITION_MESSAGE => {
             let altitude = match fields[11].parse::<u32>() {
-                Ok(value) => Some(Feet(value as f64)),
+                Ok(value) => Some(feet(value as f64)),
                 _ => None
             };
             let lat = fields[14].parse::<f64>();
@@ -97,7 +106,7 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
         },
 
         msg_type::ES_AIRBORNE_VELOCITY_MESSAGE => {
-            let ground_speed = Knots(fields[12].parse::<f64>()?);
+            let ground_speed = knots(fields[12].parse::<f64>()?);
             let track = Deg(fields[13].parse::<f64>()?);
 
             return Ok(Some(data::Sbs1Message::EsAirborneVelocity(data::EsAirborneVelocity{
@@ -106,7 +115,7 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
         },
 
         msg_type::SURVEILLANCE_ALT_MESSAGE => {
-            let altitude = Feet(fields[11].parse::<u32>()? as f64);
+            let altitude = feet(fields[11].parse::<u32>()? as f64);
             return Ok(Some(data::Sbs1Message::SurveillanceAltitude(data::SurveillanceAltitude{
                 id, altitude
             })));

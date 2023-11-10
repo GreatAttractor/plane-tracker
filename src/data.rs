@@ -9,6 +9,7 @@
 use cgmath::{Deg, Point2, Rad};
 use crate::{config, gui};
 use std::collections::HashMap;
+use uom::{si::f64, si::{length, velocity}};
 
 /// Arithmetic mean radius (R1) as per IUGG.
 pub const EARTH_RADIUS: f64 = 6_371_008.8;
@@ -21,15 +22,6 @@ pub struct LatLon {
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ModeSTransponderCode(u32); // value <= 0x00FFFFFF
-
-#[derive(Debug)]
-pub struct Knots(pub f64);
-
-#[derive(Debug)]
-pub struct Meters(pub f64);
-
-#[derive(Debug)]
-pub struct Feet(pub f64);
 
 impl std::str::FromStr for ModeSTransponderCode {
     type Err = String;
@@ -59,21 +51,21 @@ pub struct EsIdentificationAndCategory {
 #[derive(Debug)]
 pub struct EsAirbornePosition {
     pub id: ModeSTransponderCode,
-    pub altitude: Option<Feet>,
+    pub altitude: Option<f64::Length>,
     pub lat_lon: Option<LatLon>
 }
 
 #[derive(Debug)]
 pub struct EsAirborneVelocity {
     pub id: ModeSTransponderCode,
-    pub ground_speed: Knots,
+    pub ground_speed: f64::Velocity,
     pub track: Deg<f64>
 }
 
 #[derive(Debug)]
 pub struct SurveillanceAltitude {
     pub id: ModeSTransponderCode,
-    pub altitude: Feet
+    pub altitude: f64::Length
 }
 
 #[derive(Debug)]
@@ -101,8 +93,8 @@ pub struct Aircraft {
     pub lat_lon: Option<LatLon>,
     pub estimated_lat_lon: Option<LatLon>,
     pub track: Option<Deg<f64>>,
-    pub altitude: Option<Feet>,
-    pub ground_speed: Option<Knots>,
+    pub altitude: Option<f64::Length>,
+    pub ground_speed: Option<f64::Velocity>,
     pub t_last_update: std::time::Instant,
 }
 
