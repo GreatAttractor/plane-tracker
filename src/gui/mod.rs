@@ -6,7 +6,7 @@
 // (see the LICENSE file for details).
 //
 
-use cgmath::{Deg, Rad};
+use cgmath::{Deg, InnerSpace, Rad};
 use crate::{data, data::ProgramData};
 use gtk4 as gtk;
 use gtk::cairo;
@@ -60,7 +60,7 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
 }
 
 /// `Ctx` uses local frame (Y points up), pixel scale.
-fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft) {
+fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer: &data::GeoPos) {
     let _rt = RestoreTransform::new(ctx);
 
     // all values in pixels
@@ -91,7 +91,20 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft) {
     }
 
     ctx.move_to(HORZ_OFFSET, 4.0 * LINE_SPACING);
+    match (aircraft.altitude, &aircraft.lat_lon) {
+        (Some(altitude), Some(lat_lon)) => {
+            let obs_pos = data::to_global(observer);
+            let aircraft_pos = data::to_global(&data::GeoPos{ lat_lon: lat_lon.clone(), elevation: altitude });
+            let distance = (obs_pos - aircraft_pos).magnitude();
+            ctx.show_text(&format!("{:.1} km", distance / 1000.0)).unwrap();
+        },
+
+        _ => ()
+    }
+
+    ctx.move_to(HORZ_OFFSET, 5.0 * LINE_SPACING);
     ctx.show_text(&format!("{:.1} s", aircraft.t_last_update.elapsed().as_secs_f64())).unwrap();
+
 }
 
 fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
@@ -116,14 +129,14 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
             };
             ctx.set_source_rgb(color.0, color.1, color.2);
 
-            let projected_pos = data::project(&pd.observer_lat_lon, aircraft.lat_lon.as_ref().unwrap());
+            let projected_pos = data::project(&pd.observer_location.lat_lon, aircraft.lat_lon.as_ref().unwrap());
             let _rt = RestoreTransform::new(ctx);
 
             ctx.translate(projected_pos.x, projected_pos.y);
             ctx.scale(1.0 / scale, 1.0 / scale);
             draw_aircraft_icon(ctx, aircraft.track.unwrap());
             ctx.scale(1.0, -1.0);
-            draw_aircraft_info(ctx, aircraft);
+            draw_aircraft_info(ctx, aircraft, &pd.observer_location);
         }
     }
 }

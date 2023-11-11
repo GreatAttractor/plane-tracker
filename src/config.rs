@@ -11,6 +11,7 @@ use crate::data;
 use gtk::glib;
 use gtk4 as gtk;
 use std::error::Error;
+use uom::{si::f64, si::length};
 
 mod groups {
     pub const UI: &str = "UI";
@@ -19,7 +20,7 @@ mod groups {
 
 mod keys {
     // group: MAIN
-    pub const OBSERVER_LAT_LON: &str = "ObserverLatLon";
+    pub const OBSERVER_LOCATION: &str = "ObserverLocation";
 
     // group: UI
     pub const MAIN_WINDOW_POS_SIZE: &str = "MainWindowPosSize";
@@ -48,11 +49,17 @@ impl Configuration {
         Configuration{ key_file }
     }
 
-    pub fn observer_lat_lon(&self) -> Result<data::LatLon, Box<dyn Error>> {
-        let ll_str = self.key_file.string(groups::MAIN, keys::OBSERVER_LAT_LON)?;
+    pub fn observer_location(&self) -> Result<data::GeoPos, Box<dyn Error>> {
+        let ll_str = self.key_file.string(groups::MAIN, keys::OBSERVER_LOCATION)?;
         let values: Vec<&str> = ll_str.split(';').collect();
-        if values.len() != 2 { return Err("too few values".into()); } //TODO: implement FromStr and Display for LatLon instead
-        Ok(data::LatLon{ lat: Deg(values[0].parse::<f64>()?), lon: Deg(values[1].parse::<f64>()?) })
+        if values.len() != 3 { return Err("too few values".into()); }
+        Ok(data::GeoPos{
+            lat_lon: data::LatLon{
+                lat: Deg(values[0].parse::<f64>()?),
+                lon: Deg(values[1].parse::<f64>()?)
+            },
+            elevation: f64::Length::new::<length::meter>(values[2].parse::<f64>()?)
+        })
     }
 
     pub fn main_window_pos(&self) -> Option<gtk::gdk::Rectangle> {

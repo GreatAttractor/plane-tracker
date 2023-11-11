@@ -6,22 +6,32 @@
 // (see the LICENSE file for details).
 //
 
-use cgmath::{Deg, Point2, Rad};
+use cgmath::{Deg, Point2, Point3, Rad};
 use crate::{config, gui};
 use std::collections::HashMap;
 use uom::{si::f64, si::{length, velocity}};
 
 /// Arithmetic mean radius (R1) as per IUGG.
-pub const EARTH_RADIUS: f64 = 6_371_008.8;
+pub const EARTH_RADIUS_M: f64 = 6_371_008.8; // TODO: convert to const `length::meter` once supported
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LatLon {
     pub lat: Deg<f64>,
     pub lon: Deg<f64>
 }
 
+pub struct GeoPos {
+    pub lat_lon: LatLon,
+    pub elevation: f64::Length
+}
+
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ModeSTransponderCode(u32); // value <= 0x00FFFFFF
+
+fn meters(value: f64) -> f64::Length {
+    f64::Length::new::<length::meter>(value)
+}
+
 
 impl std::str::FromStr for ModeSTransponderCode {
     type Err = String;
@@ -99,7 +109,7 @@ pub struct Aircraft {
 }
 
 pub struct ProgramData {
-    pub observer_lat_lon: LatLon,
+    pub observer_location: GeoPos,
     aircraft: HashMap<ModeSTransponderCode, Aircraft>,
     pub gui: Option<gui::GuiData>, // always set once GUI is initialized,
     pub config: config::Configuration
@@ -110,7 +120,12 @@ impl ProgramData {
         let config = config::Configuration::new();
 
         ProgramData{
-            observer_lat_lon: config.observer_lat_lon().unwrap_or(LatLon{ lat: Deg(0.0), lon: Deg(0.0) }),
+            observer_location: config.observer_location().unwrap_or(
+                GeoPos{
+                    lat_lon: LatLon{ lat: Deg(0.0), lon: Deg(0.0) },
+                    elevation: f64::Length::new::<length::meter>(0.0)
+                }
+            ),
             aircraft: HashMap::new(),
             gui: None,
             config
@@ -157,12 +172,25 @@ impl ProgramData {
     }
 }
 
+/// Returns value in meters.
 pub fn project(observer: &LatLon, lat_lon: &LatLon) -> Point2<f64> {
     let rel_lat = lat_lon.lat - observer.lat;
     let rel_lon = lat_lon.lon - observer.lon;
 
-    let x = EARTH_RADIUS * Rad::from(rel_lon).0.sin() * Rad::from(rel_lat).0.cos();
-    let y = EARTH_RADIUS * Rad::from(rel_lat).0.sin();
+    let x = EARTH_RADIUS_M * Rad::from(rel_lon).0.sin() * Rad::from(rel_lat).0.cos();
+    let y = EARTH_RADIUS_M * Rad::from(rel_lat).0.sin();
 
     Point2::new(x, y)
+}
+
+/// Coordinates (meters) in Cartesian frame with lat. 0°, lon. 0°, elevation 0 being (1, 0, 0)
+/// and the North Pole at (0, 0, 1).
+pub fn to_global(position: &GeoPos) -> Point3<f64> {
+    let (lat, lon) = (position.lat_lon.lat, position.lat_lon.lon);
+    let r = EARTH_RADIUS_M + position.elevation.get::<length::meter>();
+    Point3{
+        x: r * Rad::from(lon).0.cos() * Rad::from(lat).0.cos(),
+        y: r * Rad::from(lon).0.sin() * Rad::from(lat).0.cos(),
+        z: r * Rad::from(lat).0.sin()
+    }
 }
