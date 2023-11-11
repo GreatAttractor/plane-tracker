@@ -60,7 +60,7 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
 }
 
 /// `Ctx` uses local frame (Y points up), pixel scale.
-fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer: &data::GeoPos) {
+fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer: &data::GeoPos, interpolate: bool) {
     let _rt = RestoreTransform::new(ctx);
 
     // all values in pixels
@@ -92,9 +92,15 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer:
 
     ctx.move_to(HORZ_OFFSET, 4.0 * LINE_SPACING);
     match (aircraft.altitude, &aircraft.lat_lon) {
-        (Some(altitude), Some(lat_lon)) => {
+        (Some(altitude), Some(_)) => {
+            let lat_lon = if interpolate && aircraft.estimated_lat_lon().is_some() {
+                aircraft.estimated_lat_lon().unwrap().clone()
+            } else {
+                aircraft.lat_lon.as_ref().unwrap().0.clone()
+            };
+
             let obs_pos = data::to_global(observer);
-            let aircraft_pos = data::to_global(&data::GeoPos{ lat_lon: lat_lon.0.clone(), elevation: altitude });
+            let aircraft_pos = data::to_global(&data::GeoPos{ lat_lon, elevation: altitude });
             let distance = (obs_pos - aircraft_pos).magnitude();
             ctx.show_text(&format!("{:.1} km", distance / 1000.0)).unwrap();
         },
@@ -121,29 +127,39 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
     const INACTIVE_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
 
     for aircraft in pd.aircraft.values() {
-        let lat_lon = match (&aircraft.lat_lon, aircraft.estimated_lat_lon()) {
-            (_, Some(lat_lon)) => lat_lon,
-            (Some((lat_lon, _)), _) => lat_lon,
-            _ => continue
-        };
+        let lat_lon = if let Some((lat_lon, _)) = &aircraft.lat_lon { lat_lon } else { continue; };
+        let est_lat_lon = aircraft.estimated_lat_lon();
 
         let track = if let Some(track) = aircraft.track { track } else { continue; };
 
+        let projected_pos = data::project(&pd.observer_location.lat_lon, lat_lon);
+
+        let projected_displayed_pos = data::project(
+            &pd.observer_location.lat_lon,
+            if est_lat_lon.is_some() { est_lat_lon.unwrap() } else { lat_lon }
+        );
+
+        if pd.interpolate_positions {
+            let _rt = RestoreTransform::new(ctx);
+            ctx.set_line_width(1.0 / scale);
+            ctx.set_source_rgb(0.5, 0.5, 0.5);
+            ctx.move_to(projected_pos.x, projected_pos.y);
+            ctx.line_to(projected_displayed_pos.x, projected_displayed_pos.y);
+            ctx.stroke().unwrap();
+        }
+
+        let _rt = RestoreTransform::new(ctx);
+        ctx.translate(projected_displayed_pos.x, projected_displayed_pos.y);
+        ctx.scale(1.0 / scale, 1.0 / scale);
         let color = if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
             INACTIVE_COLOR
         } else {
             ACTIVE_COLOR
         };
         ctx.set_source_rgb(color.0, color.1, color.2);
-
-        let projected_pos = data::project(&pd.observer_location.lat_lon, lat_lon);
-        let _rt = RestoreTransform::new(ctx);
-
-        ctx.translate(projected_pos.x, projected_pos.y);
-        ctx.scale(1.0 / scale, 1.0 / scale);
         draw_aircraft_icon(ctx, track);
         ctx.scale(1.0, -1.0);
-        draw_aircraft_info(ctx, aircraft, &pd.observer_location);
+        draw_aircraft_info(ctx, aircraft, &pd.observer_location, pd.interpolate_positions);
     }
 }
 

@@ -14,6 +14,9 @@ use uom::{si::f64, si::{length, velocity}};
 /// Arithmetic mean radius (R1) as per IUGG.
 pub const EARTH_RADIUS_M: f64 = 6_371_008.8; // TODO: convert to const `length::meter` once supported
 
+const GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+const MAX_DURATION_WITHOUT_UPDATE: std::time::Duration = std::time::Duration::from_secs(60);
+
 #[derive(Clone, Debug)]
 pub struct LatLon {
     pub lat: Deg<f64>,
@@ -132,7 +135,8 @@ pub struct ProgramData {
     pub aircraft: HashMap<ModeSTransponderCode, Aircraft>,
     pub gui: Option<gui::GuiData>, // always set once GUI is initialized,
     pub config: config::Configuration,
-    pub interpolate_positions: bool
+    pub interpolate_positions: bool,
+    t_last_gc: std::time::Instant
 }
 
 impl ProgramData {
@@ -149,7 +153,8 @@ impl ProgramData {
             aircraft: HashMap::new(),
             gui: None,
             config,
-            interpolate_positions: true
+            interpolate_positions: true,
+            t_last_gc: std::time::Instant::now()
         }
     }
 
@@ -191,6 +196,12 @@ impl ProgramData {
         }
 
         entry.t_last_update = std::time::Instant::now();
+    }
+
+    pub fn garbage_collect(&mut self) {
+        if self.t_last_gc.elapsed() < GC_INTERVAL { return; }
+        self.aircraft.retain(|_, aircraft| { aircraft.t_last_update.elapsed() <= MAX_DURATION_WITHOUT_UPDATE });
+        self.t_last_gc = std::time::Instant::now();
     }
 }
 

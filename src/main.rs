@@ -61,5 +61,6 @@ fn on_timer(program_data_rc: &Rc<RefCell<ProgramData>>) {
         let now = std::time::Instant::now();
         for aircraft in &mut pd.aircraft.values_mut() { aircraft.update_interpolated_position(now); }
     }
+    pd.garbage_collect();
     pd.gui.as_ref().unwrap().drawing_area.queue_draw();
 }
