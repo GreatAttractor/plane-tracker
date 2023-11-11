@@ -37,7 +37,7 @@ fn main() -> glib::ExitCode {
 
     std::thread::spawn(move || {
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::thread::sleep(std::time::Duration::from_millis(250));
             let _ = sender_worker.send(());
         }
     });
@@ -56,6 +56,10 @@ fn main() -> glib::ExitCode {
 }
 
 fn on_timer(program_data_rc: &Rc<RefCell<ProgramData>>) {
-    let pd = program_data_rc.borrow();
+    let mut pd = program_data_rc.borrow_mut();
+    if pd.interpolate_positions {
+        let now = std::time::Instant::now();
+        for aircraft in &mut pd.aircraft.values_mut() { aircraft.update_interpolated_position(now); }
+    }
     pd.gui.as_ref().unwrap().drawing_area.queue_draw();
 }

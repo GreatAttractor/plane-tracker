@@ -94,7 +94,7 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer:
     match (aircraft.altitude, &aircraft.lat_lon) {
         (Some(altitude), Some(lat_lon)) => {
             let obs_pos = data::to_global(observer);
-            let aircraft_pos = data::to_global(&data::GeoPos{ lat_lon: lat_lon.clone(), elevation: altitude });
+            let aircraft_pos = data::to_global(&data::GeoPos{ lat_lon: lat_lon.0.clone(), elevation: altitude });
             let distance = (obs_pos - aircraft_pos).magnitude();
             ctx.show_text(&format!("{:.1} km", distance / 1000.0)).unwrap();
         },
@@ -120,24 +120,30 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
     const INACTIVE_COLOR: (f64, f64, f64) = (0.6, 0.0, 0.0);
     const INACTIVE_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
 
-    for aircraft in pd.aircraft().values() {
-        if aircraft.lat_lon.is_some() && aircraft.track.is_some() {
-            let color = if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
-                INACTIVE_COLOR
-            } else {
-                ACTIVE_COLOR
-            };
-            ctx.set_source_rgb(color.0, color.1, color.2);
+    for aircraft in pd.aircraft.values() {
+        let lat_lon = match (&aircraft.lat_lon, aircraft.estimated_lat_lon()) {
+            (_, Some(lat_lon)) => lat_lon,
+            (Some((lat_lon, _)), _) => lat_lon,
+            _ => continue
+        };
 
-            let projected_pos = data::project(&pd.observer_location.lat_lon, aircraft.lat_lon.as_ref().unwrap());
-            let _rt = RestoreTransform::new(ctx);
+        let track = if let Some(track) = aircraft.track { track } else { continue; };
 
-            ctx.translate(projected_pos.x, projected_pos.y);
-            ctx.scale(1.0 / scale, 1.0 / scale);
-            draw_aircraft_icon(ctx, aircraft.track.unwrap());
-            ctx.scale(1.0, -1.0);
-            draw_aircraft_info(ctx, aircraft, &pd.observer_location);
-        }
+        let color = if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
+            INACTIVE_COLOR
+        } else {
+            ACTIVE_COLOR
+        };
+        ctx.set_source_rgb(color.0, color.1, color.2);
+
+        let projected_pos = data::project(&pd.observer_location.lat_lon, lat_lon);
+        let _rt = RestoreTransform::new(ctx);
+
+        ctx.translate(projected_pos.x, projected_pos.y);
+        ctx.scale(1.0 / scale, 1.0 / scale);
+        draw_aircraft_icon(ctx, track);
+        ctx.scale(1.0, -1.0);
+        draw_aircraft_info(ctx, aircraft, &pd.observer_location);
     }
 }
 

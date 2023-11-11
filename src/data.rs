@@ -6,7 +6,7 @@
 // (see the LICENSE file for details).
 //
 
-use cgmath::{Deg, Point2, Point3, Rad};
+use cgmath::{Basis3, Deg, EuclideanSpace, InnerSpace, Point2, Point3, Rotation, Rotation3, Vector3, Rad};
 use crate::{config, gui};
 use std::collections::HashMap;
 use uom::{si::f64, si::{length, velocity}};
@@ -27,11 +27,6 @@ pub struct GeoPos {
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ModeSTransponderCode(u32); // value <= 0x00FFFFFF
-
-fn meters(value: f64) -> f64::Length {
-    f64::Length::new::<length::meter>(value)
-}
-
 
 impl std::str::FromStr for ModeSTransponderCode {
     type Err = String;
@@ -100,19 +95,44 @@ impl Sbs1Message {
 pub struct Aircraft {
     pub id: ModeSTransponderCode,
     pub callsign: Option<String>,
-    pub lat_lon: Option<LatLon>,
-    pub estimated_lat_lon: Option<LatLon>,
+    pub lat_lon: Option<(LatLon, std::time::Instant)>, // contains time of last update
+    estimated_lat_lon: Option<(LatLon, std::time::Instant)>, // contains time of last estimation
     pub track: Option<Deg<f64>>,
     pub altitude: Option<f64::Length>,
     pub ground_speed: Option<f64::Velocity>,
-    pub t_last_update: std::time::Instant,
+    pub t_last_update: std::time::Instant, // time of last update of any field
+}
+
+impl Aircraft {
+    pub fn update_interpolated_position(&mut self, now: std::time::Instant) {
+        match &self.estimated_lat_lon {
+            None => {
+                match (&self.lat_lon, self.track, self.ground_speed) {
+                    (Some((lat_lon, t_last)), Some(track), Some(ground_speed)) => {
+                        self.estimated_lat_lon = Some((estimate_position(lat_lon, track, ground_speed, now - *t_last), now));
+                    },
+                    _ => ()
+                }
+            },
+
+            Some((est_lat_lon, t_last)) => {
+                self.estimated_lat_lon =
+                    Some((estimate_position(est_lat_lon, self.track.unwrap(), self.ground_speed.unwrap(), now - *t_last), now));
+            },
+        }
+    }
+
+    pub fn estimated_lat_lon(&self) -> Option<&LatLon> {
+        self.estimated_lat_lon.as_ref().map(|ell| &ell.0)
+    }
 }
 
 pub struct ProgramData {
     pub observer_location: GeoPos,
-    aircraft: HashMap<ModeSTransponderCode, Aircraft>,
+    pub aircraft: HashMap<ModeSTransponderCode, Aircraft>,
     pub gui: Option<gui::GuiData>, // always set once GUI is initialized,
-    pub config: config::Configuration
+    pub config: config::Configuration,
+    pub interpolate_positions: bool
 }
 
 impl ProgramData {
@@ -128,12 +148,9 @@ impl ProgramData {
             ),
             aircraft: HashMap::new(),
             gui: None,
-            config
+            config,
+            interpolate_positions: true
         }
-    }
-
-    pub fn aircraft(&self) -> &HashMap<ModeSTransponderCode, Aircraft> {
-        &self.aircraft
     }
 
     pub fn update(&mut self, msg: Sbs1Message) {
@@ -155,7 +172,12 @@ impl ProgramData {
 
             Sbs1Message::EsAirbornePosition(msg) => {
                 entry.altitude = msg.altitude;
-                entry.lat_lon = msg.lat_lon;
+                if let Some(lat_lon) = msg.lat_lon {
+                    entry.lat_lon = Some((lat_lon, std::time::Instant::now()));
+                    if entry.estimated_lat_lon.is_some() {
+                        entry.estimated_lat_lon = entry.lat_lon.clone();
+                    }
+                }
             },
 
             Sbs1Message::EsAirborneVelocity(msg) => {
@@ -183,14 +205,47 @@ pub fn project(observer: &LatLon, lat_lon: &LatLon) -> Point2<f64> {
     Point2::new(x, y)
 }
 
+fn to_xyz_unit(lat_lon: &LatLon) -> Point3<f64> {
+    let (lat, lon) = (lat_lon.lat, lat_lon.lon);
+    Point3{
+        x: Rad::from(lon).0.cos() * Rad::from(lat).0.cos(),
+        y: Rad::from(lon).0.sin() * Rad::from(lat).0.cos(),
+        z: Rad::from(lat).0.sin()
+    }
+}
+
 /// Coordinates (meters) in Cartesian frame with lat. 0°, lon. 0°, elevation 0 being (1, 0, 0)
 /// and the North Pole at (0, 0, 1).
 pub fn to_global(position: &GeoPos) -> Point3<f64> {
-    let (lat, lon) = (position.lat_lon.lat, position.lat_lon.lon);
     let r = EARTH_RADIUS_M + position.elevation.get::<length::meter>();
-    Point3{
-        x: r * Rad::from(lon).0.cos() * Rad::from(lat).0.cos(),
-        y: r * Rad::from(lon).0.sin() * Rad::from(lat).0.cos(),
-        z: r * Rad::from(lat).0.sin()
-    }
+    r * to_xyz_unit(&position.lat_lon)
+}
+
+fn meters(value: f64) -> f64::Length {
+    f64::Length::new::<length::meter>(value)
+}
+
+fn estimate_position(
+    start: &LatLon,
+    track: Deg<f64>,
+    ground_speed: f64::Velocity,
+    duration: std::time::Duration
+) -> LatLon {
+    let pos = to_xyz_unit(start);
+
+    let r = pos.to_vec();
+    let n_pole = Point3{ x: 0.0, y: 0.0, z: 1.0 };
+    let p = (n_pole - pos).normalize();
+    let track_rot = Basis3::from_axis_angle(r, -track);
+    let q = track_rot.rotate_vector(p);
+    // since we are talking a few second update intervals, treat the Earth as locally flat
+    let forward_angle = Rad(ground_speed.get::<velocity::meter_per_second>() * duration.as_secs_f64() / EARTH_RADIUS_M);
+    let forward_rot = Basis3::from_axis_angle(Vector3::cross(q, r), -forward_angle);
+
+    let est_p = forward_rot.rotate_point(pos);
+
+    let lat = Deg::from(Rad(est_p.z.asin()));
+    let lon = Deg::from(Rad(f64::atan2(est_p.y, est_p.x)));
+
+    LatLon{ lat, lon }
 }
