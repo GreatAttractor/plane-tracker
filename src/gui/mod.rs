@@ -17,7 +17,8 @@ use std::{cell::RefCell, rc::Rc};
 use uom::{si::f64, si::{length, velocity}};
 
 pub struct GuiData {
-    pub drawing_area: gtk::DrawingArea
+    pub drawing_area: gtk::DrawingArea,
+    pub plot_range: f64::Length
 }
 
 struct RestoreTransform<'a> {
@@ -37,7 +38,72 @@ impl<'a> Drop for RestoreTransform<'a> {
     }
 }
 
-/// `Ctx` uses local frame (Y points up), pixel scale.
+fn kilometers(value: f64) -> f64::Length {
+    f64::Length::new::<length::kilometer>(value)
+}
+
+/// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
+fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let pd = program_data_rc.borrow();
+    let gui = pd.gui.as_ref().unwrap();
+    ctx.set_source_rgb(0.3, 0.3, 0.3);
+
+    const FONT_SIZE: f64 = 20.0; // pixels
+    const LABEL_OFFSET: f64 = 0.2 * FONT_SIZE;
+    const CROSS_SIZE: f64 = 40.0; // pixels
+
+    let cs = CROSS_SIZE / scale;
+    ctx.set_line_width(2.0 / scale);
+    ctx.move_to(-cs / 2.0, 0.0);
+    ctx.line_to(cs / 2.0, 0.0);
+    ctx.stroke().unwrap();
+    ctx.move_to(0.0, -cs / 2.0);
+    ctx.line_to(0.0, cs / 2.0);
+    ctx.stroke().unwrap();
+
+    ctx.set_line_width(1.0 / scale);
+
+    ctx.set_font_size(FONT_SIZE / scale);
+
+    let mut radius = kilometers(20.0);
+    while radius < gui.plot_range {
+        ctx.arc(
+            0.0, 0.0,
+            data::project_distance_on_earth(radius).get::<length::meter>(),
+            0.0, 2.0 * std::f64::consts::PI
+        );
+        ctx.stroke().unwrap();
+
+        {
+            let _rt = RestoreTransform::new(ctx);
+            ctx.scale(1.0, -1.0);
+
+            let r = radius.get::<length::meter>();
+            let text = format!("{:.0}", r / 1000.0);
+
+            let lofs = LABEL_OFFSET / scale;
+
+            ctx.move_to(r + lofs, 0.0);
+            ctx.show_text(&text).unwrap();
+            ctx.stroke().unwrap(); // unknown why these are needed, but without them there are some invalid lines
+
+            ctx.move_to(-r + lofs, 0.0);
+            ctx.show_text(&text).unwrap();
+            ctx.stroke().unwrap();
+
+            ctx.move_to(0.0, r + FONT_SIZE / scale + lofs);
+            ctx.show_text(&text).unwrap();
+            ctx.stroke().unwrap();
+
+            ctx.move_to(0.0, -r - lofs);
+            ctx.show_text(&text).unwrap();
+            ctx.stroke().unwrap();
+        }
+        radius += kilometers(20.0);
+    }
+}
+
+/// Current transform of `ctx`: Y points up, aircraft at (0, 0), pixel scale.
 fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
     const SIZE: f64 = 20.0; // pixels
     const WEDGE_ANGLE: Deg<f64> = Deg(30.0);
@@ -59,7 +125,7 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
     ctx.stroke().unwrap();
 }
 
-/// `Ctx` uses local frame (Y points up), pixel scale.
+/// Current transform of `ctx`: Y points down, aircraft at (0, 0), pixel scale.
 fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer: &data::GeoPos, interpolate: bool) {
     let _rt = RestoreTransform::new(ctx);
 
@@ -113,14 +179,11 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer:
 
 }
 
+/// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
 fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let pd = program_data_rc.borrow();
 
-    const RANGE: f64 = 150_000.0;
-    let scale = width as f64 / 2.0 / RANGE;
-
-    ctx.translate(width as f64 / 2.0, height as f64 / 2.0);
-    ctx.scale(scale, -scale);
+    let scale = width as f64 / 2.0 / pd.gui.as_ref().unwrap().plot_range.get::<length::meter>();
 
     const ACTIVE_COLOR: (f64, f64, f64) = (0.0, 0.6, 0.0);
     const INACTIVE_COLOR: (f64, f64, f64) = (0.6, 0.0, 0.0);
@@ -164,6 +227,11 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
 }
 
 fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let scale = width as f64 / 2.0 / program_data_rc.borrow().gui.as_ref().unwrap().plot_range.get::<length::meter>();
+    ctx.translate(width as f64 / 2.0, height as f64 / 2.0);
+    ctx.scale(scale, -scale);
+
+    draw_range_circles(ctx, scale, program_data_rc);
     draw_aircraft(ctx, width, height, program_data_rc);
 }
 
@@ -175,7 +243,10 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
         on_draw_main_view(ctx, width, height, &program_data_rc);
     }));
 
-    program_data_rc.borrow_mut().gui = Some(GuiData{ drawing_area: drawing_area.clone() });
+    program_data_rc.borrow_mut().gui = Some(GuiData{
+        drawing_area: drawing_area.clone(),
+        plot_range: f64::Length::new::<length::kilometer>(200.0)
+    });
 
     let window = gtk::ApplicationWindow::builder()
         .application(app)

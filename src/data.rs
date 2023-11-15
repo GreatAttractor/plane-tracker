@@ -205,17 +205,27 @@ impl ProgramData {
     }
 }
 
-/// Returns value in meters.
+/// Orthographic projection with observer at (0, 0); value in meters.
 pub fn project(observer: &LatLon, lat_lon: &LatLon) -> Point2<f64> {
-    let rel_lat = lat_lon.lat - observer.lat;
-    let rel_lon = lat_lon.lon - observer.lon;
+    const NS: Vector3<f64> = Vector3{ x: 0.0, y: 0.0, z: 1.0 };
+    const EW: Vector3<f64> = Vector3{ x: 0.0, y: 1.0, z: 0.0 };
 
-    let x = EARTH_RADIUS_M * Rad::from(rel_lon).0.sin() * Rad::from(rel_lat).0.cos();
-    let y = EARTH_RADIUS_M * Rad::from(rel_lat).0.sin();
+    let rot_ns = Basis3::from_axis_angle(NS, -observer.lon);
+    let rot_ew = Basis3::from_axis_angle(EW, observer.lat);
 
-    Point2::new(x, y)
+    let p = EARTH_RADIUS_M * to_xyz_unit(lat_lon).to_vec();
+    let q = rot_ew.rotate_vector(rot_ns.rotate_vector(p));
+
+    Point2{ x: q.y, y: q.z }
 }
 
+/// Orthographic projection of a distance measured along the Earth's surface (at elevation 0).
+pub fn project_distance_on_earth(radius: f64::Length) -> f64::Length {
+    meters(EARTH_RADIUS_M * (radius.get::<length::meter>() / EARTH_RADIUS_M).sin())
+}
+
+/// Coordinates (meters) in Cartesian frame with lat. 0°, lon. 0°, elevation 0 being (1, 0, 0)
+/// and the North Pole at (0, 0, 1).
 fn to_xyz_unit(lat_lon: &LatLon) -> Point3<f64> {
     let (lat, lon) = (lat_lon.lat, lat_lon.lon);
     Point3{
@@ -225,8 +235,6 @@ fn to_xyz_unit(lat_lon: &LatLon) -> Point3<f64> {
     }
 }
 
-/// Coordinates (meters) in Cartesian frame with lat. 0°, lon. 0°, elevation 0 being (1, 0, 0)
-/// and the North Pole at (0, 0, 1).
 pub fn to_global(position: &GeoPos) -> Point3<f64> {
     let r = EARTH_RADIUS_M + position.elevation.get::<length::meter>();
     r * to_xyz_unit(&position.lat_lon)
@@ -249,7 +257,6 @@ fn estimate_position(
     let p = (n_pole - pos).normalize();
     let track_rot = Basis3::from_axis_angle(r, -track);
     let q = track_rot.rotate_vector(p);
-    // since we are talking a few second update intervals, treat the Earth as locally flat
     let forward_angle = Rad(ground_speed.get::<velocity::meter_per_second>() * duration.as_secs_f64() / EARTH_RADIUS_M);
     let forward_rot = Basis3::from_axis_angle(Vector3::cross(q, r), -forward_angle);
 
