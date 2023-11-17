@@ -259,23 +259,13 @@ fn create_toolbar(
 
     let zoom_in = gtk::Button::builder().label("zoom+").build();
     zoom_in.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
-        let mut pd = program_data_rc.borrow_mut();
-        let gui = pd.gui.as_mut().unwrap();
-        if gui.plot_range.get::<length::kilometer>() > 20.0 {
-            gui.plot_range /= ZOOM_FACTOR;
-            gui.drawing_area.queue_draw();
-        }
+        on_zoom(-1, &program_data_rc);
     }));
     toolbar.append(&zoom_in);
 
     let zoom_out = gtk::Button::builder().label("zoom−").build();
     zoom_out.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
-        let mut pd = program_data_rc.borrow_mut();
-        let gui = pd.gui.as_mut().unwrap();
-        if gui.plot_range.get::<length::kilometer>() < 500.0 {
-            gui.plot_range *= ZOOM_FACTOR;
-            gui.drawing_area.queue_draw();
-        }
+        on_zoom(1, &program_data_rc);
     }));
     toolbar.append(&zoom_out);
 
@@ -318,6 +308,17 @@ fn create_status_bar(program_data_rc: &Rc<RefCell<ProgramData>>) -> (gtk::Frame,
     (status_bar_frame, StatusBarFields{ server })
 }
 
+fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let mut pd = program_data_rc.borrow_mut();
+    let gui = pd.gui.as_mut().unwrap();
+
+    let new_range = gui.plot_range * ZOOM_FACTOR.powi(steps);
+    if new_range >= kilometers(20.0) && new_range <= kilometers(500.0) {
+        gui.plot_range = new_range;
+        gui.drawing_area.queue_draw();
+    }
+}
+
 pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let contents = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
 
@@ -333,6 +334,12 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
     drawing_area.set_draw_func(clone!(@weak program_data_rc => @default-panic, move |_widget, ctx, width, height| {
         on_draw_main_view(ctx, width, height, &program_data_rc);
     }));
+    let evt_ctrl = gtk::EventControllerScroll::builder().flags(gtk::EventControllerScrollFlags::BOTH_AXES).build();
+    evt_ctrl.connect_scroll(clone!(@weak program_data_rc => @default-panic, move |_, _, y| {
+        on_zoom(y as i32, &program_data_rc);
+        glib::signal::Propagation::Stop
+    }));
+    drawing_area.add_controller(evt_ctrl);
     sub_contents.append(&drawing_area);
 
     contents.append(&sub_contents);
