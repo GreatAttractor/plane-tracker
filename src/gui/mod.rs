@@ -16,6 +16,10 @@ use gtk::prelude::*;
 use std::{cell::RefCell, rc::Rc};
 use uom::{si::f64, si::{length, velocity}};
 
+const SPACING: i32 = 10; // control spacing in pixels
+
+const ZOOM_FACTOR: f64 = 1.2;
+
 pub struct GuiData {
     pub drawing_area: gtk::DrawingArea,
     pub plot_range: f64::Length
@@ -36,6 +40,10 @@ impl<'a> Drop for RestoreTransform<'a> {
     fn drop(&mut self) {
         self.ctx.set_matrix(self.m)
     }
+}
+
+struct StatusBarFields {
+    server: gtk::Label,
 }
 
 fn kilometers(value: f64) -> f64::Length {
@@ -235,13 +243,101 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     draw_aircraft(ctx, width, height, program_data_rc);
 }
 
+fn create_toolbar(
+    //main_wnd: &gtk::ApplicationWindow,
+    program_data_rc: &Rc<RefCell<ProgramData>>
+) -> gtk::Box {
+
+    let toolbar = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
+    toolbar.add_css_class("toolbar"); // TODO: does it actually have an effect?
+
+    let label = gtk::Label::new(Some("aa!"));
+    toolbar.append(&label);
+
+    let label = gtk::Label::new(Some("bb!"));
+    toolbar.append(&label);
+
+    let zoom_in = gtk::Button::builder().label("zoom+").build();
+    zoom_in.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
+        let mut pd = program_data_rc.borrow_mut();
+        let gui = pd.gui.as_mut().unwrap();
+        if gui.plot_range.get::<length::kilometer>() > 20.0 {
+            gui.plot_range /= ZOOM_FACTOR;
+            gui.drawing_area.queue_draw();
+        }
+    }));
+    toolbar.append(&zoom_in);
+
+    let zoom_out = gtk::Button::builder().label("zoom−").build();
+    zoom_out.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
+        let mut pd = program_data_rc.borrow_mut();
+        let gui = pd.gui.as_mut().unwrap();
+        if gui.plot_range.get::<length::kilometer>() < 500.0 {
+            gui.plot_range *= ZOOM_FACTOR;
+            gui.drawing_area.queue_draw();
+        }
+    }));
+    toolbar.append(&zoom_out);
+
+    toolbar
+}
+
+fn set_all_margins(widget: &impl gtk::traits::WidgetExt, margin: i32) {
+    widget.set_margin_start(margin);
+    widget.set_margin_end(margin);
+    widget.set_margin_bottom(margin);
+    widget.set_margin_top(margin);
+}
+
+fn set_start_end_margins(widget: &impl gtk::traits::WidgetExt, margin: i32) {
+    widget.set_margin_start(margin);
+    widget.set_margin_end(margin);
+}
+
+fn create_status_bar(program_data_rc: &Rc<RefCell<ProgramData>>) -> (gtk::Frame, StatusBarFields) {
+    const PADDING: i32 = 10; //TODO: depend on DPI (or does it already?)
+
+    let status_bar_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    set_all_margins(&status_bar_box, PADDING);
+
+    let server = gtk::Label::new(Some("<server adddress>:<port>"));
+    set_start_end_margins(&server, PADDING);
+
+    let num_aircraft = gtk::Label::new(Some("12"));
+    set_start_end_margins(&num_aircraft, PADDING);
+
+    status_bar_box.append(&server);
+    status_bar_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+
+    status_bar_box.append(&num_aircraft);
+
+    let status_bar_frame = gtk::Frame::builder().child(&status_bar_box).build();
+    //status_bar_frame.set_shadow_type(gtk::ShadowType::In);
+    //TODO: set shadowed inset border
+
+    (status_bar_frame, StatusBarFields{ server })
+}
+
 pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let contents = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
+
+    let sub_contents = gtk::Box::new(gtk::Orientation::Horizontal, SPACING);
+    sub_contents.set_hexpand(true);
+    sub_contents.set_vexpand(true);
+
+    let toolbar = create_toolbar(program_data_rc);
+    sub_contents.append(&toolbar);
 
     let drawing_area = gtk::DrawingArea::builder().build();
-
+    drawing_area.set_hexpand(true);
     drawing_area.set_draw_func(clone!(@weak program_data_rc => @default-panic, move |_widget, ctx, width, height| {
         on_draw_main_view(ctx, width, height, &program_data_rc);
     }));
+    sub_contents.append(&drawing_area);
+
+    contents.append(&sub_contents);
+
+    contents.append(&create_status_bar(program_data_rc).0);
 
     program_data_rc.borrow_mut().gui = Some(GuiData{
         drawing_area: drawing_area.clone(),
@@ -253,7 +349,7 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
         .default_width(640)
         .default_height(480)
         .title("Plane Tracker")
-        .child(&drawing_area)
+        .child(&contents)
         .build();
 
     {
