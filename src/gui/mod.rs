@@ -333,12 +333,6 @@ fn create_toolbar(
     }));
     toolbar.append(&disconnect);
 
-    let label = gtk::Label::new(Some("aa!"));
-    toolbar.append(&label);
-
-    let label = gtk::Label::new(Some("bb!"));
-    toolbar.append(&label);
-
     let zoom_in = gtk::Button::builder().label("zoom+").build();
     zoom_in.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
         on_zoom(-1, &program_data_rc);
