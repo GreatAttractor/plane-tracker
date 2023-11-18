@@ -21,6 +21,7 @@ mod groups {
 mod keys {
     // group: MAIN
     pub const OBSERVER_LOCATION: &str = "ObserverLocation";
+    pub const SERVER_ADDRRESS: &str = "ServerAddress";
 
     // group: UI
     pub const MAIN_WINDOW_POS_SIZE: &str = "MainWindowPosSize";
@@ -47,6 +48,14 @@ impl Configuration {
         }
 
         Configuration{ key_file }
+    }
+
+    pub fn server_address(&self) -> Result<String, Box<dyn Error>> {
+        Ok(self.key_file.string(groups::MAIN, keys::SERVER_ADDRRESS)?.as_str().into())
+    }
+
+    pub fn set_server_address(&self, server_address: &str) {
+        self.key_file.set_string(groups::MAIN, keys::SERVER_ADDRRESS, server_address);
     }
 
     pub fn observer_location(&self) -> Result<data::GeoPos, Box<dyn Error>> {

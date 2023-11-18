@@ -284,10 +284,12 @@ fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCel
     );
     dialog.set_title(Some("Connect to SBS1 server"));
     let server_address = gtk::Text::new();
+    server_address.set_text(&program_data_rc.borrow().config.server_address().unwrap_or("".into()));
     set_all_margins(&dialog.content_area(), PADDING);
     dialog.content_area().append(&server_address);
     dialog.connect_response(clone!(@weak server_address, @weak program_data_rc => @default-panic, move |dlg, response| {
         if response == gtk::ResponseType::Ok {
+            program_data_rc.borrow().config.set_server_address(server_address.text().as_str());
             on_connect(server_address.text().into(), &program_data_rc);
         }
         dlg.close();

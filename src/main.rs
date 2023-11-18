@@ -42,7 +42,13 @@ fn main() -> glib::ExitCode {
         }
     });
 
-    application.run()
+    let exit_code = application.run();
+
+    if program_data_rc.borrow().config.store().is_err() {
+        println!("WARNING: Failed to save configuration.");
+    }
+
+    exit_code
 }
 
 fn on_timer(program_data_rc: &Rc<RefCell<ProgramData>>) {
