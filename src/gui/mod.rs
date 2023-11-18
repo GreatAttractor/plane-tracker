@@ -21,9 +21,15 @@ const PADDING: i32 = 10; //TODO: depend on DPI (or does it already?)
 
 const ZOOM_FACTOR: f64 = 1.2;
 
+pub struct StatusBarFields {
+    server_address: gtk::Label,
+    pub num_aircraft: gtk::Label
+}
+
 pub struct GuiData {
     pub drawing_area: gtk::DrawingArea,
-    pub plot_range: f64::Length
+    pub plot_range: f64::Length,
+    pub status_bar_fields: StatusBarFields
 }
 
 struct RestoreTransform<'a> {
@@ -41,10 +47,6 @@ impl<'a> Drop for RestoreTransform<'a> {
     fn drop(&mut self) {
         self.ctx.set_matrix(self.m)
     }
-}
-
-struct StatusBarFields {
-    server: gtk::Label,
 }
 
 fn kilometers(value: f64) -> f64::Length {
@@ -244,7 +246,7 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     draw_aircraft(ctx, width, height, program_data_rc);
 }
 
-fn on_connect(server_addr: &str, program_data_rc: &Rc<RefCell<ProgramData>>) {
+fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let mut pd = program_data_rc.borrow_mut();
 
     if let Some(data_receiver) = &mut pd.data_receiver {
@@ -252,7 +254,7 @@ fn on_connect(server_addr: &str, program_data_rc: &Rc<RefCell<ProgramData>>) {
         data_receiver.worker.take().unwrap().join().unwrap();
     }
 
-    let stream = std::net::TcpStream::connect(server_addr).unwrap();
+    let stream = std::net::TcpStream::connect(&server_address).unwrap();
 
     let (sender_worker, receiver_main) = glib::MainContext::channel(glib::Priority::DEFAULT);
     receiver_main.attach(None, clone!(@weak program_data_rc => @default-panic, move |msg| {
@@ -265,7 +267,11 @@ fn on_connect(server_addr: &str, program_data_rc: &Rc<RefCell<ProgramData>>) {
         data_receiver::data_receiver(stream2, sender_worker);
     }));
 
-    pd.data_receiver = Some(data::DataReceiver{ worker, stream });
+    let gui = pd.gui.as_ref().unwrap();
+    gui.status_bar_fields.server_address.set_text(&format!("Connected to {}", server_address));
+    gui.status_bar_fields.num_aircraft.set_text("aircraft: 0");
+
+    pd.data_receiver = Some(data::DataReceiver{ server_address, worker, stream });
 }
 
 fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCell<ProgramData>>) {
@@ -282,7 +288,7 @@ fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCel
     dialog.content_area().append(&server_address);
     dialog.connect_response(clone!(@weak server_address, @weak program_data_rc => @default-panic, move |dlg, response| {
         if response == gtk::ResponseType::Ok {
-            on_connect(server_address.text().as_str(), &program_data_rc);
+            on_connect(server_address.text().into(), &program_data_rc);
         }
         dlg.close();
     }));
@@ -299,6 +305,10 @@ fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
 
     pd.data_receiver = None;
     pd.aircraft.clear();
+
+    let gui = pd.gui.as_ref().unwrap();
+    gui.status_bar_fields.server_address.set_text("");
+    gui.status_bar_fields.num_aircraft.set_text("aircraft: 0");
 }
 
 fn create_toolbar(
@@ -358,13 +368,13 @@ fn create_status_bar(program_data_rc: &Rc<RefCell<ProgramData>>) -> (gtk::Frame,
     let status_bar_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     set_all_margins(&status_bar_box, PADDING);
 
-    let server = gtk::Label::new(Some("<server adddress>:<port>"));
-    set_start_end_margins(&server, PADDING);
+    let server_address = gtk::Label::new(None);
+    set_start_end_margins(&server_address, PADDING);
 
-    let num_aircraft = gtk::Label::new(Some("12"));
+    let num_aircraft = gtk::Label::new(None);
     set_start_end_margins(&num_aircraft, PADDING);
 
-    status_bar_box.append(&server);
+    status_bar_box.append(&server_address);
     status_bar_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
 
     status_bar_box.append(&num_aircraft);
@@ -373,7 +383,7 @@ fn create_status_bar(program_data_rc: &Rc<RefCell<ProgramData>>) -> (gtk::Frame,
     //status_bar_frame.set_shadow_type(gtk::ShadowType::In);
     //TODO: set shadowed inset border
 
-    (status_bar_frame, StatusBarFields{ server })
+    (status_bar_frame, StatusBarFields{ server_address, num_aircraft })
 }
 
 fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
@@ -436,11 +446,13 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
 
     contents.append(&sub_contents);
 
-    contents.append(&create_status_bar(program_data_rc).0);
+    let (status_bar, status_bar_fields) = create_status_bar(program_data_rc);
+    contents.append(&status_bar);
 
     program_data_rc.borrow_mut().gui = Some(GuiData{
         drawing_area: drawing_area.clone(),
-        plot_range: f64::Length::new::<length::kilometer>(200.0)
+        plot_range: f64::Length::new::<length::kilometer>(200.0),
+        status_bar_fields
     });
 
     window.present();

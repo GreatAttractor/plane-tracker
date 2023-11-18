@@ -14,7 +14,7 @@ use uom::{si::f64, si::{length, velocity}};
 /// Arithmetic mean radius (R1) as per IUGG.
 pub const EARTH_RADIUS_M: f64 = 6_371_008.8; // TODO: convert to const `length::meter` once supported
 
-const GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+const GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 const MAX_DURATION_WITHOUT_UPDATE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Clone, Debug)]
@@ -131,6 +131,7 @@ impl Aircraft {
 }
 
 pub struct DataReceiver {
+    pub server_address: String,
     pub worker: Option<std::thread::JoinHandle<()>>, // always `Some`
     pub stream: std::net::TcpStream // stream providing SBS1 messages
 }
@@ -201,8 +202,13 @@ impl ProgramData {
                 entry.altitude = Some(msg.altitude);
             }
         }
-
         entry.t_last_update = std::time::Instant::now();
+
+        let num_displayed_aircraft = self.aircraft
+            .iter()
+            .filter(|(_, aircraft)| { aircraft.lat_lon.is_some() && aircraft.track.is_some() })
+            .count();
+        self.gui.as_ref().unwrap().status_bar_fields.num_aircraft.set_text(&format!("aircraft: {}", num_displayed_aircraft));
     }
 
     pub fn garbage_collect(&mut self) {
