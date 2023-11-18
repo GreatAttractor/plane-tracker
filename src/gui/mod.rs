@@ -7,7 +7,7 @@
 //
 
 use cgmath::{Deg, InnerSpace, Rad};
-use crate::{data, data::ProgramData};
+use crate::{data, data::ProgramData, data_receiver};
 use gtk4 as gtk;
 use gtk::cairo;
 use gtk::glib;
@@ -17,6 +17,7 @@ use std::{cell::RefCell, rc::Rc};
 use uom::{si::f64, si::{length, velocity}};
 
 const SPACING: i32 = 10; // control spacing in pixels
+const PADDING: i32 = 10; //TODO: depend on DPI (or does it already?)
 
 const ZOOM_FACTOR: f64 = 1.2;
 
@@ -243,13 +244,82 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     draw_aircraft(ctx, width, height, program_data_rc);
 }
 
+fn on_connect(server_addr: &str, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let mut pd = program_data_rc.borrow_mut();
+
+    if let Some(data_receiver) = &mut pd.data_receiver {
+        data_receiver.stream.shutdown(std::net::Shutdown::Both).unwrap();
+        data_receiver.worker.take().unwrap().join().unwrap();
+    }
+
+    let stream = std::net::TcpStream::connect(server_addr).unwrap();
+
+    let (sender_worker, receiver_main) = glib::MainContext::channel(glib::Priority::DEFAULT);
+    receiver_main.attach(None, clone!(@weak program_data_rc => @default-panic, move |msg| {
+        data_receiver::on_data_received(&program_data_rc, msg);
+        glib::ControlFlow::Continue
+    }));
+
+    let stream2 = stream.try_clone().unwrap();
+    let worker = Some(std::thread::spawn(move || {
+        data_receiver::data_receiver(stream2, sender_worker);
+    }));
+
+    pd.data_receiver = Some(data::DataReceiver{ worker, stream });
+}
+
+fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let dialog = gtk::MessageDialog::new(
+        Some(main_wnd),
+        gtk::DialogFlags::MODAL,
+        gtk::MessageType::Question,
+        gtk::ButtonsType::OkCancel,
+        "Server address:"
+    );
+    dialog.set_title(Some("Connect to SBS1 server"));
+    let server_address = gtk::Text::new();
+    set_all_margins(&dialog.content_area(), PADDING);
+    dialog.content_area().append(&server_address);
+    dialog.connect_response(clone!(@weak server_address, @weak program_data_rc => @default-panic, move |dlg, response| {
+        if response == gtk::ResponseType::Ok {
+            on_connect(server_address.text().as_str(), &program_data_rc);
+        }
+        dlg.close();
+    }));
+    dialog.show();
+}
+
+fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
+    let mut pd = program_data_rc.borrow_mut();
+
+    if let Some(data_receiver) = &mut pd.data_receiver {
+        data_receiver.stream.shutdown(std::net::Shutdown::Both).unwrap();
+        data_receiver.worker.take().unwrap().join().unwrap();
+    }
+
+    pd.data_receiver = None;
+    pd.aircraft.clear();
+}
+
 fn create_toolbar(
-    //main_wnd: &gtk::ApplicationWindow,
+    main_wnd: &gtk::ApplicationWindow,
     program_data_rc: &Rc<RefCell<ProgramData>>
 ) -> gtk::Box {
 
     let toolbar = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
     toolbar.add_css_class("toolbar"); // TODO: does it actually have an effect?
+
+    let connect = gtk::Button::builder().label("connect").build();
+    connect.connect_clicked(clone!(@weak main_wnd, @weak program_data_rc => @default-panic, move |_| {
+        on_connect_btn(&main_wnd, &program_data_rc);
+    }));
+    toolbar.append(&connect);
+
+    let disconnect = gtk::Button::builder().label("disconnect").build();
+    disconnect.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
+        on_disconnect(&program_data_rc);
+    }));
+    toolbar.append(&disconnect);
 
     let label = gtk::Label::new(Some("aa!"));
     toolbar.append(&label);
@@ -285,8 +355,6 @@ fn set_start_end_margins(widget: &impl gtk::traits::WidgetExt, margin: i32) {
 }
 
 fn create_status_bar(program_data_rc: &Rc<RefCell<ProgramData>>) -> (gtk::Frame, StatusBarFields) {
-    const PADDING: i32 = 10; //TODO: depend on DPI (or does it already?)
-
     let status_bar_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     set_all_margins(&status_bar_box, PADDING);
 
@@ -322,35 +390,6 @@ fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
 pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let contents = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
 
-    let sub_contents = gtk::Box::new(gtk::Orientation::Horizontal, SPACING);
-    sub_contents.set_hexpand(true);
-    sub_contents.set_vexpand(true);
-
-    let toolbar = create_toolbar(program_data_rc);
-    sub_contents.append(&toolbar);
-
-    let drawing_area = gtk::DrawingArea::builder().build();
-    drawing_area.set_hexpand(true);
-    drawing_area.set_draw_func(clone!(@weak program_data_rc => @default-panic, move |_widget, ctx, width, height| {
-        on_draw_main_view(ctx, width, height, &program_data_rc);
-    }));
-    let evt_ctrl = gtk::EventControllerScroll::builder().flags(gtk::EventControllerScrollFlags::BOTH_AXES).build();
-    evt_ctrl.connect_scroll(clone!(@weak program_data_rc => @default-panic, move |_, _, y| {
-        on_zoom(y as i32, &program_data_rc);
-        glib::signal::Propagation::Stop
-    }));
-    drawing_area.add_controller(evt_ctrl);
-    sub_contents.append(&drawing_area);
-
-    contents.append(&sub_contents);
-
-    contents.append(&create_status_bar(program_data_rc).0);
-
-    program_data_rc.borrow_mut().gui = Some(GuiData{
-        drawing_area: drawing_area.clone(),
-        plot_range: f64::Length::new::<length::kilometer>(200.0)
-    });
-
     let window = gtk::ApplicationWindow::builder()
         .application(app)
         .default_width(640)
@@ -374,6 +413,35 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
             if is_maximized { window.maximize(); }
         }
     }
+
+    let sub_contents = gtk::Box::new(gtk::Orientation::Horizontal, SPACING);
+    sub_contents.set_hexpand(true);
+    sub_contents.set_vexpand(true);
+
+    let toolbar = create_toolbar(&window, program_data_rc);
+    sub_contents.append(&toolbar);
+
+    let drawing_area = gtk::DrawingArea::builder().build();
+    drawing_area.set_hexpand(true);
+    drawing_area.set_draw_func(clone!(@weak program_data_rc => @default-panic, move |_widget, ctx, width, height| {
+        on_draw_main_view(ctx, width, height, &program_data_rc);
+    }));
+    let evt_ctrl = gtk::EventControllerScroll::builder().flags(gtk::EventControllerScrollFlags::BOTH_AXES).build();
+    evt_ctrl.connect_scroll(clone!(@weak program_data_rc => @default-panic, move |_, _, y| {
+        on_zoom(y as i32, &program_data_rc);
+        glib::signal::Propagation::Stop
+    }));
+    drawing_area.add_controller(evt_ctrl);
+    sub_contents.append(&drawing_area);
+
+    contents.append(&sub_contents);
+
+    contents.append(&create_status_bar(program_data_rc).0);
+
+    program_data_rc.borrow_mut().gui = Some(GuiData{
+        drawing_area: drawing_area.clone(),
+        plot_range: f64::Length::new::<length::kilometer>(200.0)
+    });
 
     window.present();
 }

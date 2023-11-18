@@ -130,13 +130,19 @@ impl Aircraft {
     }
 }
 
+pub struct DataReceiver {
+    pub worker: Option<std::thread::JoinHandle<()>>, // always `Some`
+    pub stream: std::net::TcpStream // stream providing SBS1 messages
+}
+
 pub struct ProgramData {
     pub observer_location: GeoPos,
     pub aircraft: HashMap<ModeSTransponderCode, Aircraft>,
     pub gui: Option<gui::GuiData>, // always set once GUI is initialized,
     pub config: config::Configuration,
     pub interpolate_positions: bool,
-    t_last_gc: std::time::Instant
+    t_last_gc: std::time::Instant, // last garbage collection of `aircraft`
+    pub data_receiver: Option<DataReceiver>
 }
 
 impl ProgramData {
@@ -154,7 +160,8 @@ impl ProgramData {
             gui: None,
             config,
             interpolate_positions: true,
-            t_last_gc: std::time::Instant::now()
+            t_last_gc: std::time::Instant::now(),
+            data_receiver: None
         }
     }
 

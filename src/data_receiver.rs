@@ -27,9 +27,7 @@ fn knots(value: f64) -> f64::Velocity {
     f64::Velocity::new::<velocity::knot>(value)
 }
 
-pub fn data_receiver(sender: gtk::glib::Sender<data::Sbs1Message>) {
-    let stream = std::net::TcpStream::connect("localhost:30003").unwrap();
-
+pub fn data_receiver(stream: std::net::TcpStream, sender: gtk::glib::Sender<data::Sbs1Message>) {
     let buf_reader = std::io::BufReader::new(stream);
 
     for line in buf_reader.lines() {

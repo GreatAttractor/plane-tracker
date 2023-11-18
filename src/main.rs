@@ -42,16 +42,6 @@ fn main() -> glib::ExitCode {
         }
     });
 
-    let (sender_worker, receiver_main) = glib::MainContext::channel(glib::Priority::DEFAULT);
-    receiver_main.attach(None, clone!(@weak program_data_rc => @default-panic, move |msg| {
-        data_receiver::on_data_received(&program_data_rc, msg);
-        glib::ControlFlow::Continue
-    }));
-
-    std::thread::spawn(move || {
-        data_receiver::data_receiver(sender_worker);
-    });
-
     application.run()
 }
 
