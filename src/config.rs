@@ -22,6 +22,7 @@ mod keys {
     // group: MAIN
     pub const OBSERVER_LOCATION: &str = "ObserverLocation";
     pub const SERVER_ADDRRESS: &str = "ServerAddress";
+    pub const FILTER_OOO_MSGS: &str = "FilterOoOMessages";
 
     // group: UI
     pub const MAIN_WINDOW_POS_SIZE: &str = "MainWindowPosSize";
@@ -48,6 +49,14 @@ impl Configuration {
         }
 
         Configuration{ key_file }
+    }
+
+    pub fn filter_ooo_messages(&self) -> Result<bool, Box<dyn Error>> {
+        Ok(self.key_file.boolean(groups::MAIN, keys::FILTER_OOO_MSGS)?)
+    }
+
+    pub fn set_filter_ooo_messages(&self, value: bool) {
+        self.key_file.set_boolean(groups::MAIN, keys::FILTER_OOO_MSGS, value);
     }
 
     pub fn server_address(&self) -> Result<String, Box<dyn Error>> {

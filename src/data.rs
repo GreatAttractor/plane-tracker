@@ -16,6 +16,7 @@ pub const EARTH_RADIUS_M: f64 = 6_371_008.8; // TODO: convert to const `length::
 
 const GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 const MAX_DURATION_WITHOUT_UPDATE: std::time::Duration = std::time::Duration::from_secs(60);
+const NORTH_POLE: Vector3<f64> = Vector3{ x: 0.0, y: 0.0, z: 1.0 };
 
 #[derive(Clone, Debug)]
 pub struct LatLon {
@@ -142,8 +143,9 @@ pub struct ProgramData {
     pub gui: Option<gui::GuiData>, // always set once GUI is initialized,
     pub config: config::Configuration,
     pub interpolate_positions: bool,
-    t_last_gc: std::time::Instant, // last garbage collection of `aircraft`
-    pub data_receiver: Option<DataReceiver>
+    /// Last garbage collection of `aircraft`.
+    t_last_gc: std::time::Instant,
+    pub data_receiver: Option<DataReceiver>,
 }
 
 impl ProgramData {
@@ -162,7 +164,7 @@ impl ProgramData {
             config,
             interpolate_positions: true,
             t_last_gc: std::time::Instant::now(),
-            data_receiver: None
+            data_receiver: None,
         }
     }
 
@@ -184,13 +186,23 @@ impl ProgramData {
             },
 
             Sbs1Message::EsAirbornePosition(msg) => {
-                entry.altitude = msg.altitude;
                 if let Some(lat_lon) = msg.lat_lon {
+                    if self.config.filter_ooo_messages().unwrap_or(true)
+                        && entry.lat_lon.is_some()
+                        && entry.track.is_some()
+                        && entry.altitude.is_some()
+                        && aircraft_moved_backwards(entry, &lat_lon) {
+
+                        return;
+                    }
+
                     entry.lat_lon = Some((lat_lon, std::time::Instant::now()));
                     if entry.estimated_lat_lon.is_some() {
                         entry.estimated_lat_lon = entry.lat_lon.clone();
                     }
                 }
+
+                entry.altitude = msg.altitude;
             },
 
             Sbs1Message::EsAirborneVelocity(msg) => {
@@ -208,7 +220,7 @@ impl ProgramData {
             .iter()
             .filter(|(_, aircraft)| { aircraft.lat_lon.is_some() && aircraft.track.is_some() })
             .count();
-        self.gui.as_ref().unwrap().status_bar_fields.num_aircraft.set_text(&format!("aircraft: {}", num_displayed_aircraft));
+        self.gui.as_ref().unwrap().status_bar_fields.num_aircraft.set_text(&format!("Aircraft: {}", num_displayed_aircraft));
     }
 
     pub fn garbage_collect(&mut self) {
@@ -279,4 +291,27 @@ fn estimate_position(
     let lon = Deg::from(Rad(f64::atan2(est_p.y, est_p.x)));
 
     LatLon{ lat, lon }
+}
+
+/// Assumes level flight; returns unit vector in global frame.
+fn get_travel_dir(aircraft: &Aircraft) -> Vector3<f64> {
+    let r = to_xyz_unit(&aircraft.lat_lon.as_ref().unwrap().0).to_vec();
+    let s = NORTH_POLE.cross(r);
+    let to_north = r.cross(s).normalize();
+
+    let rot = Basis3::from_axis_angle(r, -aircraft.track.unwrap());
+
+    rot.rotate_vector(to_north)
+}
+
+fn aircraft_moved_backwards(aircraft: &Aircraft, new_pos: &LatLon) -> bool {
+    let old_xyz = to_xyz_unit(
+        match aircraft.estimated_lat_lon.as_ref() {
+            Some((lat_lon, _)) => &lat_lon,
+            None => &aircraft.lat_lon.as_ref().unwrap().0
+        }
+    );
+    let new_xyz = to_xyz_unit(new_pos);
+
+    (new_xyz - old_xyz).dot(get_travel_dir(aircraft)) < 0.0
 }

@@ -269,7 +269,7 @@ fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>
 
     let gui = pd.gui.as_ref().unwrap();
     gui.status_bar_fields.server_address.set_text(&format!("Connected to {}", server_address));
-    gui.status_bar_fields.num_aircraft.set_text("aircraft: 0");
+    gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0");
 
     pd.data_receiver = Some(data::DataReceiver{ server_address, worker, stream });
 }
@@ -310,7 +310,7 @@ fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
 
     let gui = pd.gui.as_ref().unwrap();
     gui.status_bar_fields.server_address.set_text("");
-    gui.status_bar_fields.num_aircraft.set_text("aircraft: 0");
+    gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0");
 }
 
 fn create_toolbar(
@@ -332,6 +332,16 @@ fn create_toolbar(
         on_disconnect(&program_data_rc);
     }));
     toolbar.append(&disconnect);
+
+    let filter = gtk::CheckButton::builder()
+        .label("filter")
+        .tooltip_text("Filter out-of-order location messages")
+        .active(program_data_rc.borrow().config.filter_ooo_messages().unwrap_or(true))
+        .build();
+    filter.connect_toggled(clone!(@weak program_data_rc => @default-panic, move |checkbox| {
+        program_data_rc.borrow().config.set_filter_ooo_messages(checkbox.is_active());
+    }));
+    toolbar.append(&filter);
 
     let zoom_in = gtk::Button::builder().label("zoom+").build();
     zoom_in.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
@@ -432,12 +442,20 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
     drawing_area.set_draw_func(clone!(@weak program_data_rc => @default-panic, move |_widget, ctx, width, height| {
         on_draw_main_view(ctx, width, height, &program_data_rc);
     }));
-    let evt_ctrl = gtk::EventControllerScroll::builder().flags(gtk::EventControllerScrollFlags::BOTH_AXES).build();
-    evt_ctrl.connect_scroll(clone!(@weak program_data_rc => @default-panic, move |_, _, y| {
+
+    let evt_ctrl_scroll = gtk::EventControllerScroll::builder().flags(gtk::EventControllerScrollFlags::BOTH_AXES).build();
+    evt_ctrl_scroll.connect_scroll(clone!(@weak program_data_rc => @default-panic, move |_, _, y| {
         on_zoom(y as i32, &program_data_rc);
         glib::signal::Propagation::Stop
     }));
-    drawing_area.add_controller(evt_ctrl);
+    drawing_area.add_controller(evt_ctrl_scroll);
+
+    let g_click = gtk::GestureClick::builder().build();
+    g_click.connect_pressed(|_, button, x, y| {
+        println!("button {} pressed at {}, {}", button, x, y);
+    });
+    drawing_area.add_controller(g_click);
+
     sub_contents.append(&drawing_area);
 
     contents.append(&sub_contents);
