@@ -134,7 +134,7 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>, text_scale: f64) {
     ctx.line_to(p2.0, p2.1);
     ctx.line_to(p0.0, p0.1);
 
-    ctx.set_line_width(2.0);
+    ctx.set_line_width(2.0 * text_scale);
     ctx.stroke().unwrap();
 }
 
@@ -425,7 +425,7 @@ fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let gui = pd.gui.as_mut().unwrap();
 
     let new_range = gui.plot_range * ZOOM_FACTOR.powi(steps);
-    if new_range >= kilometers(20.0) && new_range <= kilometers(500.0) {
+    if new_range >= kilometers(20.0) && new_range <= kilometers(1000.0) {
         gui.plot_range = new_range;
         gui.drawing_area.queue_draw();
     }
