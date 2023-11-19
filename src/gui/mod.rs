@@ -74,7 +74,7 @@ fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<Ref
 
     ctx.set_line_width(1.0 / scale);
 
-    ctx.set_font_size(FONT_SIZE / scale);
+    ctx.set_font_size(FONT_SIZE / scale * pd.config.text_scale().unwrap_or(1.0));
 
     let mut radius = kilometers(20.0);
     while radius < gui.plot_range {
@@ -115,7 +115,7 @@ fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<Ref
 }
 
 /// Current transform of `ctx`: Y points up, aircraft at (0, 0), pixel scale.
-fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
+fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>, text_scale: f64) {
     const SIZE: f64 = 20.0; // pixels
     const WEDGE_ANGLE: Deg<f64> = Deg(30.0);
 
@@ -123,9 +123,11 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
 
     ctx.rotate(-Rad::from(track).0);
 
-    let p0 = (-Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * SIZE, -SIZE / 2.0);
-    let p1 = (0.0, SIZE / 2.0);
-    let p2 = (Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * SIZE, -SIZE / 2.0);
+    let s = SIZE * text_scale;
+
+    let p0 = (-Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * s, -s / 2.0);
+    let p1 = (0.0, s / 2.0);
+    let p2 = (Rad::from(WEDGE_ANGLE).0.sin() * 0.5 * s, -s / 2.0);
 
     ctx.move_to(p0.0, p0.1);
     ctx.line_to(p1.0, p1.1);
@@ -137,7 +139,13 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>) {
 }
 
 /// Current transform of `ctx`: Y points down, aircraft at (0, 0), pixel scale.
-fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer: &data::GeoPos, interpolate: bool) {
+fn draw_aircraft_info(
+    ctx: &cairo::Context,
+    aircraft: &data::Aircraft,
+    observer: &data::GeoPos,
+    interpolate: bool,
+    text_scale: f64
+) {
     let _rt = RestoreTransform::new(ctx);
 
     // all values in pixels
@@ -145,29 +153,31 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer:
     const HORZ_OFFSET: f64 = 30.0;
     const LINE_SPACING: f64 = FONT_SIZE * 1.1;
 
-    ctx.set_font_size(FONT_SIZE);
+    ctx.set_font_size(FONT_SIZE * text_scale);
+    let h_offs = HORZ_OFFSET * text_scale;
+    let l_spc = LINE_SPACING * text_scale;
 
-    ctx.move_to(HORZ_OFFSET, 0.0);
+    ctx.move_to(h_offs, 0.0);
     if let Some(callsign) = &aircraft.callsign {
         ctx.show_text(&callsign).unwrap();
     }
 
-    ctx.move_to(HORZ_OFFSET, 1.0 * LINE_SPACING);
+    ctx.move_to(h_offs, 1.0 * l_spc);
     if let Some(track) = &aircraft.track {
         ctx.show_text(&format!("{:.0}°", track.0)).unwrap();
     }
 
-    ctx.move_to(HORZ_OFFSET, 2.0 * LINE_SPACING);
+    ctx.move_to(h_offs, 2.0 * l_spc);
     if let Some(altitude) = &aircraft.altitude {
         ctx.show_text(&format!("{:.0} m", altitude.get::<length::meter>())).unwrap();
     }
 
-    ctx.move_to(HORZ_OFFSET, 3.0 * LINE_SPACING);
+    ctx.move_to(h_offs, 3.0 * l_spc);
     if let Some(ground_speed) = &aircraft.ground_speed {
         ctx.show_text(&format!("{:.0} km/h", ground_speed.get::<velocity::kilometer_per_hour>())).unwrap();
     }
 
-    ctx.move_to(HORZ_OFFSET, 4.0 * LINE_SPACING);
+    ctx.move_to(h_offs, 4.0 * l_spc);
     match (aircraft.altitude, &aircraft.lat_lon) {
         (Some(altitude), Some(_)) => {
             let lat_lon = if interpolate && aircraft.estimated_lat_lon().is_some() {
@@ -185,7 +195,7 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer:
         _ => ()
     }
 
-    ctx.move_to(HORZ_OFFSET, 5.0 * LINE_SPACING);
+    ctx.move_to(h_offs, 5.0 * l_spc);
     ctx.show_text(&format!("{:.1} s", aircraft.t_last_update.elapsed().as_secs_f64())).unwrap();
 
 }
@@ -193,6 +203,7 @@ fn draw_aircraft_info(ctx: &cairo::Context, aircraft: &data::Aircraft, observer:
 /// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
 fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let pd = program_data_rc.borrow();
+    let text_scale = pd.config.text_scale().unwrap_or(1.0);
 
     let scale = width as f64 / 2.0 / pd.gui.as_ref().unwrap().plot_range.get::<length::meter>();
 
@@ -231,9 +242,9 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
             ACTIVE_COLOR
         };
         ctx.set_source_rgb(color.0, color.1, color.2);
-        draw_aircraft_icon(ctx, track);
+        draw_aircraft_icon(ctx, track, text_scale);
         ctx.scale(1.0, -1.0);
-        draw_aircraft_info(ctx, aircraft, &pd.observer_location, pd.interpolate_positions);
+        draw_aircraft_info(ctx, aircraft, &pd.observer_location, pd.interpolate_positions, text_scale);
     }
 }
 
@@ -354,6 +365,23 @@ fn create_toolbar(
         on_zoom(1, &program_data_rc);
     }));
     toolbar.append(&zoom_out);
+
+    let text_enlarge = gtk::Button::builder().label("text+").build();
+    text_enlarge.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
+        let pd = program_data_rc.borrow();
+        pd.config.set_text_scale(pd.config.text_scale().unwrap_or(1.0) * ZOOM_FACTOR);
+        pd.gui.as_ref().unwrap().drawing_area.queue_draw();
+    }));
+    toolbar.append(&text_enlarge);
+
+    let text_shrink = gtk::Button::builder().label("text-").build();
+    text_shrink.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
+        let pd = program_data_rc.borrow();
+        pd.config.set_text_scale(pd.config.text_scale().unwrap_or(1.0) / ZOOM_FACTOR);
+        pd.gui.as_ref().unwrap().drawing_area.queue_draw();
+    }));
+    toolbar.append(&text_shrink);
+
 
     toolbar
 }

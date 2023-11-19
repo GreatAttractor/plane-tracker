@@ -145,7 +145,7 @@ pub struct ProgramData {
     pub interpolate_positions: bool,
     /// Last garbage collection of `aircraft`.
     t_last_gc: std::time::Instant,
-    pub data_receiver: Option<DataReceiver>,
+    pub data_receiver: Option<DataReceiver>
 }
 
 impl ProgramData {

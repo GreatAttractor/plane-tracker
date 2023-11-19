@@ -27,6 +27,7 @@ mod keys {
     // group: UI
     pub const MAIN_WINDOW_POS_SIZE: &str = "MainWindowPosSize";
     pub const MAIN_WINDOW_MAXIMIZED: &str = "MainWindowMaximized";
+    pub const TEXT_SCALE: &str = "TextScale";
 }
 
 pub struct Configuration {
@@ -49,6 +50,20 @@ impl Configuration {
         }
 
         Configuration{ key_file }
+    }
+
+    pub fn text_scale(&self) -> Result<f64, Box<dyn Error>> {
+        let value = self.key_file.double(groups::UI, keys::TEXT_SCALE)?;
+        if value > 0.0 {
+            Ok(value)
+        } else {
+            Err(format!("{}:{} must be positive", groups::UI, keys::TEXT_SCALE).into())
+        }
+    }
+
+    pub fn set_text_scale(&self, value: f64) {
+        assert!(value > 0.0);
+        self.key_file.set_double(groups::UI, keys::TEXT_SCALE, value);
     }
 
     pub fn filter_ooo_messages(&self) -> Result<bool, Box<dyn Error>> {
