@@ -28,7 +28,7 @@ pub struct StatusBarFields {
 
 pub struct GuiData {
     pub drawing_area: gtk::DrawingArea,
-    pub plot_range: f64::Length,
+    pub plot_range: f64::Length, // corresponds to draw area width
     pub status_bar_fields: StatusBarFields
 }
 
@@ -49,19 +49,39 @@ impl<'a> Drop for RestoreTransform<'a> {
     }
 }
 
+fn meters(value: f64) -> f64::Length {
+    f64::Length::new::<length::meter>(value)
+}
+
 fn kilometers(value: f64) -> f64::Length {
     f64::Length::new::<length::kilometer>(value)
 }
 
+fn choose_closest(value: f64, sorted_values: &[f64]) -> f64 {
+    match sorted_values.binary_search_by(|x| x.partial_cmp(&value).unwrap()) {
+        Ok(idx) | Err(idx) => {
+            if idx < sorted_values.len() {
+                sorted_values[idx]
+            } else {
+                *sorted_values.last().unwrap()
+            }
+        }
+    }
+}
+
 /// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
-fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<RefCell<ProgramData>>) {
+fn draw_range_circles(ctx: &cairo::Context, scale: f64, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let pd = program_data_rc.borrow();
     let gui = pd.gui.as_ref().unwrap();
     ctx.set_source_rgb(0.3, 0.3, 0.3);
 
+    let text_scale = pd.config.text_scale().unwrap_or(1.0);
+
     const FONT_SIZE: f64 = 20.0; // pixels
     const LABEL_OFFSET: f64 = 0.2 * FONT_SIZE;
     const CROSS_SIZE: f64 = 40.0; // pixels
+    const MAX_NUM_CIRCLES_SHOWN: usize = 15;
+    const ALLOWED_R_STEPS_KM: [f64; 5] = [10.0, 20.0, 50.0, 100.0, 200.0];
 
     let cs = CROSS_SIZE / scale;
     ctx.set_line_width(2.0 / scale);
@@ -74,10 +94,25 @@ fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<Ref
 
     ctx.set_line_width(1.0 / scale);
 
-    ctx.set_font_size(FONT_SIZE / scale * pd.config.text_scale().unwrap_or(1.0));
+    ctx.set_font_size(FONT_SIZE / scale * text_scale);
 
-    let mut radius = kilometers(20.0);
-    while radius < gui.plot_range {
+    let radius_step_to_show_n_circles = |num_pixels, n| { meters(num_pixels as f64 / (scale * n as f64)) };
+
+    let desired_radius_step = radius_step_to_show_n_circles(width, MAX_NUM_CIRCLES_SHOWN)
+        .min(radius_step_to_show_n_circles(height, MAX_NUM_CIRCLES_SHOWN));
+
+    let radius_step = kilometers(choose_closest(desired_radius_step.get::<length::kilometer>(), &ALLOWED_R_STEPS_KM));
+
+    let mut radius = radius_step;
+    let max_radius = if width > height {
+        gui.plot_range
+    } else if width > 0 {
+        gui.plot_range * height as f64 / width as f64
+    } else {
+        meters(0.0)
+    };
+
+    while radius < max_radius {
         ctx.arc(
             0.0, 0.0,
             data::project_distance_on_earth(radius).get::<length::meter>(),
@@ -92,7 +127,7 @@ fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<Ref
             let r = radius.get::<length::meter>();
             let text = format!("{:.0}", r / 1000.0);
 
-            let lofs = LABEL_OFFSET / scale;
+            let lofs = LABEL_OFFSET / scale * text_scale;
 
             ctx.move_to(r + lofs, 0.0);
             ctx.show_text(&text).unwrap();
@@ -110,7 +145,7 @@ fn draw_range_circles(ctx: &cairo::Context, scale: f64, program_data_rc: &Rc<Ref
             ctx.show_text(&text).unwrap();
             ctx.stroke().unwrap();
         }
-        radius += kilometers(20.0);
+        radius += radius_step;
     }
 }
 
@@ -253,7 +288,7 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     ctx.translate(width as f64 / 2.0, height as f64 / 2.0);
     ctx.scale(scale, -scale);
 
-    draw_range_circles(ctx, scale, program_data_rc);
+    draw_range_circles(ctx, scale, width, height, program_data_rc);
     draw_aircraft(ctx, width, height, program_data_rc);
 }
 
@@ -425,7 +460,7 @@ fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let gui = pd.gui.as_mut().unwrap();
 
     let new_range = gui.plot_range * ZOOM_FACTOR.powi(steps);
-    if new_range >= kilometers(20.0) && new_range <= kilometers(1000.0) {
+    if new_range >= kilometers(20.0) && new_range <= kilometers(2000.0) {
         gui.plot_range = new_range;
         gui.drawing_area.queue_draw();
     }
