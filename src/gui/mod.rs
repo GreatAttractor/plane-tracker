@@ -6,7 +6,7 @@
 // (see the LICENSE file for details).
 //
 
-use cgmath::{Deg, InnerSpace, Rad};
+use cgmath::{Deg, InnerSpace, Point2, Rad};
 use crate::{data, data::ProgramData, data_receiver};
 use gtk4 as gtk;
 use gtk::cairo;
@@ -20,6 +20,12 @@ const SPACING: i32 = 10; // control spacing in pixels
 const PADDING: i32 = 10; //TODO: depend on DPI (or does it already?)
 
 const ZOOM_FACTOR: f64 = 1.2;
+mod colors {
+    pub const ACTIVE: (f64, f64, f64) = (0.0, 0.6, 0.0);
+    pub const INACTIVE: (f64, f64, f64) = (0.6, 0.0, 0.0);
+    pub const SELECTED: (f64, f64, f64) = (1.0, 1.0, 1.0);
+}
+const INACTIVE_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub struct StatusBarFields {
     server_address: gtk::Label,
@@ -242,10 +248,6 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
 
     let scale = width as f64 / 2.0 / pd.gui.as_ref().unwrap().plot_range.get::<length::meter>();
 
-    const ACTIVE_COLOR: (f64, f64, f64) = (0.0, 0.6, 0.0);
-    const INACTIVE_COLOR: (f64, f64, f64) = (0.6, 0.0, 0.0);
-    const INACTIVE_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
-
     for aircraft in pd.aircraft.values() {
         let lat_lon = if let Some((lat_lon, _)) = &aircraft.lat_lon { lat_lon } else { continue; };
         let est_lat_lon = aircraft.estimated_lat_lon();
@@ -271,10 +273,12 @@ fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc:
         let _rt = RestoreTransform::new(ctx);
         ctx.translate(projected_displayed_pos.x, projected_displayed_pos.y);
         ctx.scale(1.0 / scale, 1.0 / scale);
-        let color = if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
-            INACTIVE_COLOR
+        let color = if aircraft.state == data::State::Selected {
+            colors::SELECTED
+        } else if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
+            colors::INACTIVE
         } else {
-            ACTIVE_COLOR
+            colors::ACTIVE
         };
         ctx.set_source_rgb(color.0, color.1, color.2);
         draw_aircraft_icon(ctx, track, text_scale);
@@ -514,9 +518,9 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
     drawing_area.add_controller(evt_ctrl_scroll);
 
     let g_click = gtk::GestureClick::builder().build();
-    g_click.connect_pressed(|_, button, x, y| {
-        println!("button {} pressed at {}, {}", button, x, y);
-    });
+    g_click.connect_pressed(clone!(@weak program_data_rc => @default-panic, move |_, button, x, y| {
+        on_main_view_button_pressed(button, x, y, &program_data_rc);
+    }));
     drawing_area.add_controller(g_click);
 
     sub_contents.append(&drawing_area);
@@ -533,4 +537,56 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
     });
 
     window.present();
+}
+
+fn on_main_view_button_pressed(button: i32, x: f64, y: f64, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    if button != 1 { return; } //TODO: use symbolic constant
+
+    let mut pd = program_data_rc.borrow_mut();
+    let observer_ll = pd.observer_location.lat_lon.clone();
+    let global;
+    let scale;
+    let range;
+    {
+        let gui = pd.gui.as_ref().unwrap();
+        let dw = gui.drawing_area.width();
+        let dh = gui.drawing_area.height();
+        range = gui.plot_range.get::<length::meter>();
+        scale = 2.0 * range / dw as f64;
+        global = Point2{ x: scale * (x - dw as f64 / 2.0), y: scale * (dh as f64 / 2.0 - y) };
+    };
+
+    // At the moment we track no more than ~100 aircraft at a time, so just check all of them. If it changes,
+    // switch to e.g. a kd-tree.
+
+    let mut min_dist2 = std::f64::MAX;
+    let mut closest = None;
+    let mut prev_selected = None;
+    for aircraft in pd.aircraft.values_mut() {
+        if aircraft.state == data::State::Selected { prev_selected = Some(aircraft.id); }
+
+        let lat_lon = if let Some(lat_lon) = &aircraft.estimated_lat_lon {
+            lat_lon.0.clone()
+        } else if let Some(lat_lon) = &aircraft.lat_lon {
+            lat_lon.0.clone()
+        } else {
+            continue;
+        };
+
+        let proj = data::project(&observer_ll, &lat_lon);
+
+        let dist2 = (proj - global).magnitude2();
+        if dist2 < min_dist2 {
+            min_dist2 = dist2;
+            closest = Some(aircraft.id);
+        }
+    }
+
+    if let Some(closest_id) = closest {
+        if min_dist2.sqrt() <= range / 10.0 {
+            if let Some(id) = prev_selected { pd.aircraft.get_mut(&id).unwrap().state = data::State::Normal; }
+            pd.aircraft.get_mut(&closest_id).unwrap().state = data::State::Selected;
+            pd.gui.as_ref().unwrap().drawing_area.queue_draw();
+        }
+    }
 }

@@ -96,11 +96,18 @@ impl Sbs1Message {
     }
 }
 
+#[derive(PartialEq)]
+pub enum State {
+    Normal,
+    Selected
+}
+
 pub struct Aircraft {
     pub id: ModeSTransponderCode,
+    pub state: State,
     pub callsign: Option<String>,
     pub lat_lon: Option<(LatLon, std::time::Instant)>, // contains time of last update
-    estimated_lat_lon: Option<(LatLon, std::time::Instant)>, // contains time of last estimation
+    pub estimated_lat_lon: Option<(LatLon, std::time::Instant)>, // contains time of last estimation
     pub track: Option<Deg<f64>>,
     pub altitude: Option<f64::Length>,
     pub ground_speed: Option<f64::Velocity>,
@@ -169,8 +176,11 @@ impl ProgramData {
     }
 
     pub fn update(&mut self, msg: Sbs1Message) {
+        let l = self.aircraft.len(); //TESTING #########
+
         let entry = self.aircraft.entry(msg.id()).or_insert(Aircraft{
                 id: msg.id(),
+                state: State::Normal,
                 callsign: None,
                 lat_lon: None,
                 estimated_lat_lon: None,
