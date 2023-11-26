@@ -27,11 +27,24 @@ fn knots(value: f64) -> f64::Velocity {
     f64::Velocity::new::<velocity::knot>(value)
 }
 
-pub fn data_receiver(stream: std::net::TcpStream, sender: gtk::glib::Sender<data::Sbs1Message>) {
+pub fn data_receiver(
+    stream: std::net::TcpStream,
+    rec_output: Option<std::fs::File>,
+    sender: gtk::glib::Sender<data::Sbs1Message>
+) {
     let buf_reader = std::io::BufReader::new(stream);
+    let mut buf_writer = if let Some(recording) = rec_output { Some(std::io::BufWriter::new(recording)) } else { None };
 
     for line in buf_reader.lines() {
         if let Ok(line) = line {
+            if let Some(w) = &mut buf_writer {
+                let _ = w.write(format!(
+                    "{};{}\n",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.6f"),
+                    line
+                ).as_bytes()); //TODO: handle errors
+            }
+
             match parse_sbs1_message(&line) {
                 Ok(m) => if let Some(m) = m { sender.send(m).unwrap(); },
                 Err(e) => println!("Error parsing SBS1 message \"{}\": {}.", line, e)

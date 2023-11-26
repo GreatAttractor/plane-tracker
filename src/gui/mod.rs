@@ -296,14 +296,11 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     draw_aircraft(ctx, width, height, program_data_rc);
 }
 
-fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>) {
-    let mut pd = program_data_rc.borrow_mut();
-
-    if let Some(data_receiver) = &mut pd.data_receiver {
-        data_receiver.stream.shutdown(std::net::Shutdown::Both).unwrap();
-        data_receiver.worker.take().unwrap().join().unwrap();
-    }
-
+fn start_receiver(
+    server_address: String,
+    rec_output: Option<std::fs::File>,
+    program_data_rc: &Rc<RefCell<ProgramData>>
+) {
     let stream = std::net::TcpStream::connect(&server_address).unwrap();
 
     let (sender_worker, receiver_main) = glib::MainContext::channel(glib::Priority::DEFAULT);
@@ -314,14 +311,29 @@ fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>
 
     let stream2 = stream.try_clone().unwrap();
     let worker = Some(std::thread::spawn(move || {
-        data_receiver::data_receiver(stream2, sender_worker);
+        data_receiver::data_receiver(stream2, rec_output, sender_worker);
     }));
 
+    program_data_rc.borrow_mut().data_receiver = Some(data::DataReceiver{ server_address, worker, stream });
+}
+
+fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    stop_receiver(program_data_rc);
+
+    start_receiver(
+        server_address.clone(),
+        if program_data_rc.borrow().recording {
+            Some(std::fs::File::create(get_recording_file_name()).unwrap())
+        } else {
+            None
+        },
+        program_data_rc
+    );
+
+    let pd = program_data_rc.borrow_mut();
     let gui = pd.gui.as_ref().unwrap();
     gui.status_bar_fields.server_address.set_text(&format!("Connected to {}", server_address));
     gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0");
-
-    pd.data_receiver = Some(data::DataReceiver{ server_address, worker, stream });
 }
 
 fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCell<ProgramData>>) {
@@ -347,15 +359,24 @@ fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCel
     dialog.show();
 }
 
-fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
+/// Returns server address if receiver was running.
+fn stop_receiver(program_data_rc: &Rc<RefCell<ProgramData>>) -> Option<String> {
     let mut pd = program_data_rc.borrow_mut();
-
     if let Some(data_receiver) = &mut pd.data_receiver {
         data_receiver.stream.shutdown(std::net::Shutdown::Both).unwrap();
         data_receiver.worker.take().unwrap().join().unwrap();
+        let addr = data_receiver.server_address.clone();
+        pd.data_receiver = None;
+        Some(addr)
+    } else {
+        None
     }
+}
 
-    pd.data_receiver = None;
+fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
+    stop_receiver(program_data_rc);
+
+    let mut pd = program_data_rc.borrow_mut();
     pd.aircraft.clear();
 
     let gui = pd.gui.as_ref().unwrap();
@@ -421,8 +442,31 @@ fn create_toolbar(
     }));
     toolbar.append(&text_shrink);
 
+    let toggle_recording = gtk::ToggleButton::builder().label("rec").build();
+    toggle_recording.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |btn| {
+        on_toggle_recording(btn.is_active(), &program_data_rc);
+    }));
+    toolbar.append(&toggle_recording);
 
     toolbar
+}
+
+fn get_recording_file_name() -> String {
+    format!("rec-{}.csv", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"))
+}
+
+fn on_toggle_recording(enabled: bool, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    program_data_rc.borrow_mut().recording = enabled;
+
+    if let Some(prev_address) = stop_receiver(program_data_rc) {
+        let rec_output = if enabled {
+            Some(std::fs::File::create(get_recording_file_name()).unwrap())
+        } else {
+            None
+        };
+
+        start_receiver(prev_address, rec_output, program_data_rc);
+    }
 }
 
 fn set_all_margins(widget: &impl gtk::traits::WidgetExt, margin: i32) {

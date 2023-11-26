@@ -152,7 +152,8 @@ pub struct ProgramData {
     pub interpolate_positions: bool,
     /// Last garbage collection of `aircraft`.
     t_last_gc: std::time::Instant,
-    pub data_receiver: Option<DataReceiver>
+    pub data_receiver: Option<DataReceiver>,
+    pub recording: bool
 }
 
 impl ProgramData {
@@ -172,12 +173,11 @@ impl ProgramData {
             interpolate_positions: true,
             t_last_gc: std::time::Instant::now(),
             data_receiver: None,
+            recording: false
         }
     }
 
     pub fn update(&mut self, msg: Sbs1Message) {
-        let l = self.aircraft.len(); //TESTING #########
-
         let entry = self.aircraft.entry(msg.id()).or_insert(Aircraft{
                 id: msg.id(),
                 state: State::Normal,
