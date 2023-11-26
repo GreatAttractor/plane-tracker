@@ -369,7 +369,7 @@ fn create_toolbar(
 ) -> gtk::Box {
 
     let toolbar = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
-    toolbar.add_css_class("toolbar"); // TODO: does it actually have an effect?
+    toolbar.add_css_class("toolbar");
 
     let connect = gtk::Button::builder().label("connect").build();
     connect.connect_clicked(clone!(@weak main_wnd, @weak program_data_rc => @default-panic, move |_| {
