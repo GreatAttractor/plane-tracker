@@ -241,49 +241,64 @@ fn draw_aircraft_info(
 
 }
 
+fn draw_single_aircraft(ctx: &cairo::Context, aircraft: &data::Aircraft, scale: f64, text_scale: f64, pd: &ProgramData) {
+    let lat_lon = if let Some((lat_lon, _)) = &aircraft.lat_lon { lat_lon } else { return; };
+    let est_lat_lon = aircraft.estimated_lat_lon();
+
+    let track = if let Some(track) = aircraft.track { track } else { return; };
+
+    let projected_pos = data::project(&pd.observer_location.lat_lon, lat_lon);
+
+    let projected_displayed_pos = data::project(
+        &pd.observer_location.lat_lon,
+        if est_lat_lon.is_some() { est_lat_lon.unwrap() } else { lat_lon }
+    );
+
+    if pd.interpolate_positions {
+        let _rt = RestoreTransform::new(ctx);
+        ctx.set_line_width(1.0 / scale);
+        ctx.set_source_rgb(0.5, 0.5, 0.5);
+        ctx.move_to(projected_pos.x, projected_pos.y);
+        ctx.line_to(projected_displayed_pos.x, projected_displayed_pos.y);
+        ctx.stroke().unwrap();
+    }
+
+    let _rt = RestoreTransform::new(ctx);
+    ctx.translate(projected_displayed_pos.x, projected_displayed_pos.y);
+    ctx.scale(1.0 / scale, 1.0 / scale);
+    let color = if aircraft.state == data::State::Selected {
+        colors::SELECTED
+    } else if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
+        colors::INACTIVE
+    } else {
+        colors::ACTIVE
+    };
+    ctx.set_source_rgb(color.0, color.1, color.2);
+    draw_aircraft_icon(ctx, track, text_scale);
+    ctx.scale(1.0, -1.0);
+    draw_aircraft_info(ctx, aircraft, &pd.observer_location, pd.interpolate_positions, text_scale);
+}
+
 /// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
-fn draw_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
+fn draw_all_aircraft(ctx: &cairo::Context, width: i32, height: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
     let pd = program_data_rc.borrow();
     let text_scale = pd.config.text_scale().unwrap_or(1.0);
 
     let scale = width as f64 / 2.0 / pd.gui.as_ref().unwrap().plot_range.get::<length::meter>();
 
+    let mut selected: Option<data::ModeSTransponderCode> = None;
+
     for aircraft in pd.aircraft.values() {
-        let lat_lon = if let Some((lat_lon, _)) = &aircraft.lat_lon { lat_lon } else { continue; };
-        let est_lat_lon = aircraft.estimated_lat_lon();
-
-        let track = if let Some(track) = aircraft.track { track } else { continue; };
-
-        let projected_pos = data::project(&pd.observer_location.lat_lon, lat_lon);
-
-        let projected_displayed_pos = data::project(
-            &pd.observer_location.lat_lon,
-            if est_lat_lon.is_some() { est_lat_lon.unwrap() } else { lat_lon }
-        );
-
-        if pd.interpolate_positions {
-            let _rt = RestoreTransform::new(ctx);
-            ctx.set_line_width(1.0 / scale);
-            ctx.set_source_rgb(0.5, 0.5, 0.5);
-            ctx.move_to(projected_pos.x, projected_pos.y);
-            ctx.line_to(projected_displayed_pos.x, projected_displayed_pos.y);
-            ctx.stroke().unwrap();
+        if aircraft.state == data::State::Selected {
+            selected = Some(aircraft.id);
+            continue; // the selected aircraft will be drawn as last
         }
 
-        let _rt = RestoreTransform::new(ctx);
-        ctx.translate(projected_displayed_pos.x, projected_displayed_pos.y);
-        ctx.scale(1.0 / scale, 1.0 / scale);
-        let color = if aircraft.state == data::State::Selected {
-            colors::SELECTED
-        } else if aircraft.t_last_update.elapsed() > INACTIVE_DELAY {
-            colors::INACTIVE
-        } else {
-            colors::ACTIVE
-        };
-        ctx.set_source_rgb(color.0, color.1, color.2);
-        draw_aircraft_icon(ctx, track, text_scale);
-        ctx.scale(1.0, -1.0);
-        draw_aircraft_info(ctx, aircraft, &pd.observer_location, pd.interpolate_positions, text_scale);
+        draw_single_aircraft(ctx, aircraft, scale, text_scale, &pd);
+    }
+
+    if let Some(id) = selected {
+        draw_single_aircraft(ctx, pd.aircraft.get(&id).unwrap(), scale, text_scale, &pd);
     }
 }
 
@@ -293,7 +308,7 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     ctx.scale(scale, -scale);
 
     draw_range_circles(ctx, scale, width, height, program_data_rc);
-    draw_aircraft(ctx, width, height, program_data_rc);
+    draw_all_aircraft(ctx, width, height, program_data_rc);
 }
 
 fn start_receiver(
