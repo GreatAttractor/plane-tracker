@@ -452,7 +452,7 @@ fn create_toolbar(
 }
 
 fn get_recording_file_name() -> String {
-    format!("rec-{}.csv", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"))
+    format!("rec-{}.csv", chrono::Local::now().format("%Y-%m-%d_%H%M%S"))
 }
 
 fn on_toggle_recording(enabled: bool, program_data_rc: &Rc<RefCell<ProgramData>>) {
