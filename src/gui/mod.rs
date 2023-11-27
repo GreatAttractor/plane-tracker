@@ -350,7 +350,7 @@ fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>
     let pd = program_data_rc.borrow_mut();
     let gui = pd.gui.as_ref().unwrap();
     gui.status_bar_fields.server_address.set_text(&format!("Connected to {}", server_address));
-    gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0");
+    gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0 (max: 0)");
 }
 
 fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCell<ProgramData>>) {
@@ -395,10 +395,11 @@ fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
 
     let mut pd = program_data_rc.borrow_mut();
     pd.aircraft.clear();
+    pd.max_num_aircraft = 0;
 
     let gui = pd.gui.as_ref().unwrap();
     gui.status_bar_fields.server_address.set_text("");
-    gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0");
+    gui.status_bar_fields.num_aircraft.set_text("Aircraft: 0 (max: 0)");
 }
 
 fn create_toolbar(

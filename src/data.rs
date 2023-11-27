@@ -152,7 +152,10 @@ pub struct ProgramData {
     /// Last garbage collection of `aircraft`.
     t_last_gc: std::time::Instant,
     pub data_receiver: Option<DataReceiver>,
-    pub recording: bool
+    pub recording: bool,
+    /// Maximal (non-interpolated) distance seen so far.
+    pub max_distance: Option<f64::Length>,
+    pub max_num_aircraft: usize
 }
 
 impl ProgramData {
@@ -167,11 +170,13 @@ impl ProgramData {
                 }
             ),
             aircraft: HashMap::new(),
+            max_num_aircraft: 0,
             gui: None,
             config,
             t_last_gc: std::time::Instant::now(),
             data_receiver: None,
-            recording: false
+            recording: false,
+            max_distance: None
         }
     }
 
@@ -228,7 +233,10 @@ impl ProgramData {
             .iter()
             .filter(|(_, aircraft)| { aircraft.lat_lon.is_some() && aircraft.track.is_some() })
             .count();
-        self.gui.as_ref().unwrap().status_bar_fields.num_aircraft.set_text(&format!("Aircraft: {}", num_displayed_aircraft));
+        self.max_num_aircraft = self.max_num_aircraft.max(num_displayed_aircraft);
+        self.gui.as_ref().unwrap().status_bar_fields.num_aircraft.set_text(
+            &format!("Aircraft: {} (max: {})", num_displayed_aircraft, self.max_num_aircraft)
+        );
     }
 
     pub fn garbage_collect(&mut self) {
