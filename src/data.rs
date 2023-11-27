@@ -182,15 +182,15 @@ impl ProgramData {
 
     pub fn update(&mut self, msg: Sbs1Message) {
         let entry = self.aircraft.entry(msg.id()).or_insert(Aircraft{
-                id: msg.id(),
-                state: State::Normal,
-                callsign: None,
-                lat_lon: None,
-                estimated_lat_lon: None,
-                altitude: None,
-                track: None,
-                ground_speed: None,
-                t_last_update: std::time::Instant::now()
+            id: msg.id(),
+            state: State::Normal,
+            callsign: None,
+            lat_lon: None,
+            estimated_lat_lon: None,
+            altitude: None,
+            track: None,
+            ground_speed: None,
+            t_last_update: std::time::Instant::now()
         });
 
         match msg {
@@ -229,14 +229,28 @@ impl ProgramData {
         }
         entry.t_last_update = std::time::Instant::now();
 
+        if entry.lat_lon.is_some() && entry.altitude.is_some() {
+            let distance = get_distance(&self.observer_location, entry, false);
+            self.max_distance = Some(self.max_distance.unwrap_or(meters(0.0)).max(distance));
+        }
+
         let num_displayed_aircraft = self.aircraft
             .iter()
             .filter(|(_, aircraft)| { aircraft.lat_lon.is_some() && aircraft.track.is_some() })
             .count();
         self.max_num_aircraft = self.max_num_aircraft.max(num_displayed_aircraft);
-        self.gui.as_ref().unwrap().status_bar_fields.num_aircraft.set_text(
+
+        let gui = self.gui.as_ref().unwrap();
+
+        gui.status_bar_fields.num_aircraft.set_text(
             &format!("Aircraft: {} (max: {})", num_displayed_aircraft, self.max_num_aircraft)
         );
+
+        if let Some(d) = self.max_distance {
+            gui.status_bar_fields.max_distance.set_text(
+                &format!("Max distance: {:.1} km", d.get::<length::kilometer>())
+            );
+        }
     }
 
     pub fn garbage_collect(&mut self) {
@@ -330,4 +344,16 @@ fn aircraft_moved_backwards(aircraft: &Aircraft, new_pos: &LatLon) -> bool {
     let new_xyz = to_xyz_unit(new_pos);
 
     (new_xyz - old_xyz).dot(get_travel_dir(aircraft)) < 0.0
+}
+
+pub fn get_distance(observer: &GeoPos, aircraft: &Aircraft, interpolated: bool) -> f64::Length {
+    let lat_lon = if interpolated && aircraft.estimated_lat_lon().is_some() {
+        aircraft.estimated_lat_lon().unwrap().clone()
+    } else {
+        aircraft.lat_lon.as_ref().unwrap().0.clone()
+    };
+
+    let obs_pos = to_global(observer);
+    let aircraft_pos = to_global(&GeoPos{ lat_lon, elevation: aircraft.altitude.unwrap() });
+    meters((obs_pos - aircraft_pos).magnitude())
 }

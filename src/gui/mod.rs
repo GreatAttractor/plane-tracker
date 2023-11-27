@@ -29,7 +29,8 @@ const INACTIVE_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub struct StatusBarFields {
     server_address: gtk::Label,
-    pub num_aircraft: gtk::Label
+    pub num_aircraft: gtk::Label,
+    pub max_distance: gtk::Label
 }
 
 pub struct GuiData {
@@ -219,26 +220,13 @@ fn draw_aircraft_info(
     }
 
     ctx.move_to(h_offs, 4.0 * l_spc);
-    match (aircraft.altitude, &aircraft.lat_lon) {
-        (Some(altitude), Some(_)) => {
-            let lat_lon = if interpolate && aircraft.estimated_lat_lon().is_some() {
-                aircraft.estimated_lat_lon().unwrap().clone()
-            } else {
-                aircraft.lat_lon.as_ref().unwrap().0.clone()
-            };
-
-            let obs_pos = data::to_global(observer);
-            let aircraft_pos = data::to_global(&data::GeoPos{ lat_lon, elevation: altitude });
-            let distance = (obs_pos - aircraft_pos).magnitude();
-            ctx.show_text(&format!("{:.1} km", distance / 1000.0)).unwrap();
-        },
-
-        _ => ()
+    if aircraft.altitude.is_some() && aircraft.lat_lon.is_some() {
+        let distance = data::get_distance(observer, aircraft, interpolate);
+        ctx.show_text(&format!("{:.1} km", distance.get::<length::kilometer>())).unwrap();
     }
 
     ctx.move_to(h_offs, 5.0 * l_spc);
     ctx.show_text(&format!("{:.1} s", aircraft.t_last_update.elapsed().as_secs_f64())).unwrap();
-
 }
 
 fn draw_single_aircraft(ctx: &cairo::Context, aircraft: &data::Aircraft, scale: f64, text_scale: f64, pd: &ProgramData) {
@@ -519,16 +507,20 @@ fn create_status_bar(program_data_rc: &Rc<RefCell<ProgramData>>) -> (gtk::Frame,
     let num_aircraft = gtk::Label::new(None);
     set_start_end_margins(&num_aircraft, PADDING);
 
+    let max_distance = gtk::Label::new(None);
+    set_start_end_margins(&max_distance, PADDING);
+
     status_bar_box.append(&server_address);
     status_bar_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
-
     status_bar_box.append(&num_aircraft);
+    status_bar_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    status_bar_box.append(&max_distance);
 
     let status_bar_frame = gtk::Frame::builder().child(&status_bar_box).build();
     //status_bar_frame.set_shadow_type(gtk::ShadowType::In);
     //TODO: set shadowed inset border
 
-    (status_bar_frame, StatusBarFields{ server_address, num_aircraft })
+    (status_bar_frame, StatusBarFields{ server_address, num_aircraft, max_distance })
 }
 
 fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
