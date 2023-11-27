@@ -254,7 +254,9 @@ fn draw_single_aircraft(ctx: &cairo::Context, aircraft: &data::Aircraft, scale: 
         if est_lat_lon.is_some() { est_lat_lon.unwrap() } else { lat_lon }
     );
 
-    if pd.interpolate_positions {
+    let interpolate = pd.config.interpolate_positions().unwrap_or(true);
+
+    if interpolate {
         let _rt = RestoreTransform::new(ctx);
         ctx.set_line_width(1.0 / scale);
         ctx.set_source_rgb(0.5, 0.5, 0.5);
@@ -276,7 +278,7 @@ fn draw_single_aircraft(ctx: &cairo::Context, aircraft: &data::Aircraft, scale: 
     ctx.set_source_rgb(color.0, color.1, color.2);
     draw_aircraft_icon(ctx, track, text_scale);
     ctx.scale(1.0, -1.0);
-    draw_aircraft_info(ctx, aircraft, &pd.observer_location, pd.interpolate_positions, text_scale);
+    draw_aircraft_info(ctx, aircraft, &pd.observer_location, interpolate, text_scale);
 }
 
 /// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
@@ -428,6 +430,16 @@ fn create_toolbar(
         program_data_rc.borrow().config.set_filter_ooo_messages(checkbox.is_active());
     }));
     toolbar.append(&filter);
+
+    let interpolate = gtk::CheckButton::builder()
+        .label("intr")
+        .tooltip_text("Interpolate positions between updates")
+        .active(program_data_rc.borrow().config.interpolate_positions().unwrap_or(true))
+        .build();
+    interpolate.connect_toggled(clone!(@weak program_data_rc => @default-panic, move |checkbox| {
+        program_data_rc.borrow().config.set_interpolate_positions(checkbox.is_active());
+    }));
+    toolbar.append(&interpolate);
 
     let zoom_in = gtk::Button::builder().label("zoom+").build();
     zoom_in.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {

@@ -53,7 +53,7 @@ fn main() -> glib::ExitCode {
 
 fn on_timer(program_data_rc: &Rc<RefCell<ProgramData>>) {
     let mut pd = program_data_rc.borrow_mut();
-    if pd.interpolate_positions {
+    if pd.config.interpolate_positions().unwrap_or(true) {
         let now = std::time::Instant::now();
         for aircraft in &mut pd.aircraft.values_mut() { aircraft.update_interpolated_position(now); }
     }

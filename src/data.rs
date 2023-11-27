@@ -149,7 +149,6 @@ pub struct ProgramData {
     pub aircraft: HashMap<ModeSTransponderCode, Aircraft>,
     pub gui: Option<gui::GuiData>, // always set once GUI is initialized,
     pub config: config::Configuration,
-    pub interpolate_positions: bool,
     /// Last garbage collection of `aircraft`.
     t_last_gc: std::time::Instant,
     pub data_receiver: Option<DataReceiver>,
@@ -170,7 +169,6 @@ impl ProgramData {
             aircraft: HashMap::new(),
             gui: None,
             config,
-            interpolate_positions: true,
             t_last_gc: std::time::Instant::now(),
             data_receiver: None,
             recording: false

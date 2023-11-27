@@ -23,6 +23,7 @@ mod keys {
     pub const OBSERVER_LOCATION: &str = "ObserverLocation";
     pub const SERVER_ADDRRESS: &str = "ServerAddress";
     pub const FILTER_OOO_MSGS: &str = "FilterOoOMessages";
+    pub const INTERPOLATE_POSITIONS: &str = "InterpolatePositions";
 
     // group: UI
     pub const MAIN_WINDOW_POS_SIZE: &str = "MainWindowPosSize";
@@ -139,6 +140,14 @@ impl Configuration {
         }
 
         Some(gtk::gdk::Rectangle::new(numbers[0], numbers[1], numbers[2], numbers[3]))
+    }
+
+    pub fn set_interpolate_positions(&self, value: bool) {
+        self.key_file.set_boolean(groups::MAIN, keys::INTERPOLATE_POSITIONS, value);
+    }
+
+    pub fn interpolate_positions(&self) -> Option<bool> {
+        self.key_file.boolean(groups::MAIN, keys::INTERPOLATE_POSITIONS).ok()
     }
 }
 
