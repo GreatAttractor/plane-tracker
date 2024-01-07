@@ -8,7 +8,7 @@
 
 use cgmath::{Basis3, Deg, EuclideanSpace, InnerSpace, Point2, Point3, Rotation, Rotation3, Vector3, Rad};
 use crate::{config, gui};
-use pointing_utils::{EARTH_RADIUS_M, GeoPos, LatLon};
+use pointing_utils::{EARTH_RADIUS_M, GeoPos, LatLon, uom};
 use std::collections::HashMap;
 use uom::{si::f64, si::{length, velocity}};
 

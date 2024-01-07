@@ -9,7 +9,7 @@
 use cgmath::Deg;
 use crate::{data, data::ProgramData};
 use gtk4 as gtk;
-use pointing_utils::LatLon;
+use pointing_utils::{LatLon, uom};
 use std::{cell::RefCell, error::Error, rc::Rc, io::prelude::*};
 use uom::{si::f64, si::{length, velocity}};
 

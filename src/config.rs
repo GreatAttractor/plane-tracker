@@ -9,7 +9,7 @@
 use cgmath::Deg;
 use gtk::glib;
 use gtk4 as gtk;
-use pointing_utils::{GeoPos, LatLon};
+use pointing_utils::{GeoPos, LatLon, uom};
 use std::error::Error;
 use uom::{si::f64, si::length};
 

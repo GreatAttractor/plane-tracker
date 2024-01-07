@@ -677,7 +677,6 @@ dependencies = [
  "dirs",
  "gtk4",
  "pointing-utils",
- "uom",
 ]
 
 [[package]]

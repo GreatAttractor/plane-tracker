@@ -13,7 +13,7 @@ use gtk::cairo;
 use gtk::glib;
 use gtk::glib::clone;
 use gtk::prelude::*;
-use pointing_utils::GeoPos;
+use pointing_utils::{GeoPos, uom};
 use std::{cell::RefCell, rc::Rc};
 use uom::{si::f64, si::{length, velocity}};
 
