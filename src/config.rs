@@ -1,15 +1,15 @@
 //
 // Plane Tracker
-// Copyright (c) 2023 Filip Szczerek <ga.software@yahoo.com>
+// Copyright (c) 2023-2024 Filip Szczerek <ga.software@yahoo.com>
 //
 // This project is licensed under the terms of the MIT license
 // (see the LICENSE file for details).
 //
 
 use cgmath::Deg;
-use crate::data;
 use gtk::glib;
 use gtk4 as gtk;
+use pointing_utils::{GeoPos, LatLon};
 use std::error::Error;
 use uom::{si::f64, si::length};
 
@@ -83,12 +83,12 @@ impl Configuration {
         self.key_file.set_string(groups::MAIN, keys::SERVER_ADDRRESS, server_address);
     }
 
-    pub fn observer_location(&self) -> Result<data::GeoPos, Box<dyn Error>> {
+    pub fn observer_location(&self) -> Result<GeoPos, Box<dyn Error>> {
         let ll_str = self.key_file.string(groups::MAIN, keys::OBSERVER_LOCATION)?;
         let values: Vec<&str> = ll_str.split(';').collect();
         if values.len() != 3 { return Err("too few values".into()); }
-        Ok(data::GeoPos{
-            lat_lon: data::LatLon{
+        Ok(GeoPos{
+            lat_lon: LatLon{
                 lat: Deg(values[0].parse::<f64>()?),
                 lon: Deg(values[1].parse::<f64>()?)
             },

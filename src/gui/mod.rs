@@ -1,6 +1,6 @@
 //
 // Plane Tracker
-// Copyright (c) 2023 Filip Szczerek <ga.software@yahoo.com>
+// Copyright (c) 2023-2024 Filip Szczerek <ga.software@yahoo.com>
 //
 // This project is licensed under the terms of the MIT license
 // (see the LICENSE file for details).
@@ -13,6 +13,7 @@ use gtk::cairo;
 use gtk::glib;
 use gtk::glib::clone;
 use gtk::prelude::*;
+use pointing_utils::GeoPos;
 use std::{cell::RefCell, rc::Rc};
 use uom::{si::f64, si::{length, velocity}};
 
@@ -184,7 +185,7 @@ fn draw_aircraft_icon(ctx: &cairo::Context, track: Deg<f64>, text_scale: f64) {
 fn draw_aircraft_info(
     ctx: &cairo::Context,
     aircraft: &data::Aircraft,
-    observer: &data::GeoPos,
+    observer: &GeoPos,
     interpolate: bool,
     text_scale: f64
 ) {

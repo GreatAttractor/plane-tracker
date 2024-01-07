@@ -1,6 +1,6 @@
 //
 // Plane Tracker
-// Copyright (c) 2023 Filip Szczerek <ga.software@yahoo.com>
+// Copyright (c) 2023-2024 Filip Szczerek <ga.software@yahoo.com>
 //
 // This project is licensed under the terms of the MIT license
 // (see the LICENSE file for details).
@@ -8,26 +8,13 @@
 
 use cgmath::{Basis3, Deg, EuclideanSpace, InnerSpace, Point2, Point3, Rotation, Rotation3, Vector3, Rad};
 use crate::{config, gui};
+use pointing_utils::{EARTH_RADIUS_M, GeoPos, LatLon};
 use std::collections::HashMap;
 use uom::{si::f64, si::{length, velocity}};
-
-/// Arithmetic mean radius (R1) as per IUGG.
-pub const EARTH_RADIUS_M: f64 = 6_371_008.8; // TODO: convert to const `length::meter` once supported
 
 const GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 const MAX_DURATION_WITHOUT_UPDATE: std::time::Duration = std::time::Duration::from_secs(60);
 const NORTH_POLE: Vector3<f64> = Vector3{ x: 0.0, y: 0.0, z: 1.0 };
-
-#[derive(Clone, Debug)]
-pub struct LatLon {
-    pub lat: Deg<f64>,
-    pub lon: Deg<f64>
-}
-
-pub struct GeoPos {
-    pub lat_lon: LatLon,
-    pub elevation: f64::Length
-}
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ModeSTransponderCode(u32); // value <= 0x00FFFFFF

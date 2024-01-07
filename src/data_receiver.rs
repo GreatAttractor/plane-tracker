@@ -1,6 +1,6 @@
 //
 // Plane Tracker
-// Copyright (c) 2023 Filip Szczerek <ga.software@yahoo.com>
+// Copyright (c) 2023-2024 Filip Szczerek <ga.software@yahoo.com>
 //
 // This project is licensed under the terms of the MIT license
 // (see the LICENSE file for details).
@@ -9,6 +9,7 @@
 use cgmath::Deg;
 use crate::{data, data::ProgramData};
 use gtk4 as gtk;
+use pointing_utils::LatLon;
 use std::{cell::RefCell, error::Error, rc::Rc, io::prelude::*};
 use uom::{si::f64, si::{length, velocity}};
 
@@ -106,7 +107,7 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
             let lon = fields[15].parse::<f64>();
 
             let lat_lon = match (lat, lon) {
-                (Ok(lat), Ok(lon)) => Some(data::LatLon{ lat: Deg(lat), lon: Deg(lon) }),
+                (Ok(lat), Ok(lon)) => Some(LatLon{ lat: Deg(lat), lon: Deg(lon) }),
                 (Err(_), Err(_)) => None,
                 (Ok(_), Err(e)) | (Err(e), Ok(_)) => return Err(Box::new(e))
             };

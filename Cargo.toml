@@ -10,4 +10,5 @@ cgmath = "0.18.0"
 chrono = "0.4.31"
 dirs = "5.0.1"
 gtk4 = "0.7.3"
+pointing-utils = { path = "ext/pointing-utils" }
 uom = "0.35.0"
