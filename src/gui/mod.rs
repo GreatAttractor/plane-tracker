@@ -302,31 +302,10 @@ fn on_draw_main_view(ctx: &cairo::Context, width: i32, height: i32, program_data
     draw_all_aircraft(ctx, width, height, program_data_rc);
 }
 
-fn start_receiver(
-    server_address: String,
-    rec_output: Option<std::fs::File>,
-    program_data_rc: &Rc<RefCell<ProgramData>>
-) {
-    let stream = std::net::TcpStream::connect(&server_address).unwrap();
-
-    let (sender_worker, receiver_main) = glib::MainContext::channel(glib::Priority::DEFAULT);
-    receiver_main.attach(None, clone!(@weak program_data_rc => @default-panic, move |msg| {
-        data_receiver::on_data_received(&program_data_rc, msg);
-        glib::ControlFlow::Continue
-    }));
-
-    let stream2 = stream.try_clone().unwrap();
-    let worker = Some(std::thread::spawn(move || {
-        data_receiver::data_receiver(stream2, rec_output, sender_worker);
-    }));
-
-    program_data_rc.borrow_mut().data_receiver = Some(data::DataReceiver{ server_address, worker, stream });
-}
-
 fn on_connect(server_address: String, program_data_rc: &Rc<RefCell<ProgramData>>) {
-    stop_receiver(program_data_rc);
+    data_receiver::stop(program_data_rc);
 
-    start_receiver(
+    data_receiver::start(
         server_address.clone(),
         if program_data_rc.borrow().recording {
             Some(std::fs::File::create(get_recording_file_name()).unwrap())
@@ -365,22 +344,10 @@ fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCel
     dialog.show();
 }
 
-/// Returns server address if receiver was running.
-fn stop_receiver(program_data_rc: &Rc<RefCell<ProgramData>>) -> Option<String> {
-    let mut pd = program_data_rc.borrow_mut();
-    if let Some(data_receiver) = &mut pd.data_receiver {
-        data_receiver.stream.shutdown(std::net::Shutdown::Both).unwrap();
-        data_receiver.worker.take().unwrap().join().unwrap();
-        let addr = data_receiver.server_address.clone();
-        pd.data_receiver = None;
-        Some(addr)
-    } else {
-        None
-    }
-}
+
 
 fn on_disconnect(program_data_rc: &Rc<RefCell<ProgramData>>) {
-    stop_receiver(program_data_rc);
+    data_receiver::stop(program_data_rc);
 
     let mut pd = program_data_rc.borrow_mut();
     pd.aircraft.clear();
@@ -475,14 +442,14 @@ fn get_recording_file_name() -> String {
 fn on_toggle_recording(enabled: bool, program_data_rc: &Rc<RefCell<ProgramData>>) {
     program_data_rc.borrow_mut().recording = enabled;
 
-    if let Some(prev_address) = stop_receiver(program_data_rc) {
+    if let Some(prev_address) = data_receiver::stop(program_data_rc) {
         let rec_output = if enabled {
             Some(std::fs::File::create(get_recording_file_name()).unwrap())
         } else {
             None
         };
 
-        start_receiver(prev_address, rec_output, program_data_rc);
+        data_receiver::start(prev_address, rec_output, program_data_rc);
     }
 }
 

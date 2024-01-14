@@ -7,9 +7,9 @@
 //
 
 use cgmath::{Basis3, Deg, EuclideanSpace, InnerSpace, Point2, Point3, Rotation, Rotation3, Vector3, Rad};
-use crate::{config, gui};
+use crate::{config, data_sender::send_data, gui};
 use pointing_utils::{EARTH_RADIUS_M, GeoPos, LatLon, uom};
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use uom::{si::f64, si::{length, velocity}};
 
 const GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
@@ -142,7 +142,8 @@ pub struct ProgramData {
     pub recording: bool,
     /// Maximal (non-interpolated) distance seen so far.
     pub max_distance: Option<f64::Length>,
-    pub max_num_aircraft: usize
+    pub max_num_aircraft: usize,
+    pub data_senders: Vec<std::net::TcpStream>,
 }
 
 impl ProgramData {
@@ -163,11 +164,14 @@ impl ProgramData {
             t_last_gc: std::time::Instant::now(),
             data_receiver: None,
             recording: false,
-            max_distance: None
+            max_distance: None,
+            data_senders: vec![]
         }
     }
 
     pub fn update(&mut self, msg: Sbs1Message) {
+        let mut important_data_changed = false;
+
         let entry = self.aircraft.entry(msg.id()).or_insert(Aircraft{
             id: msg.id(),
             state: State::Normal,
@@ -203,15 +207,18 @@ impl ProgramData {
                 }
 
                 entry.altitude = msg.altitude;
+                important_data_changed = true;
             },
 
             Sbs1Message::EsAirborneVelocity(msg) => {
                 entry.ground_speed = Some(msg.ground_speed);
                 entry.track = Some(msg.track);
+                important_data_changed = true;
             },
 
             Sbs1Message::SurveillanceAltitude(msg) => {
                 entry.altitude = Some(msg.altitude);
+                important_data_changed = true;
             }
         }
         entry.t_last_update = std::time::Instant::now();
@@ -219,6 +226,10 @@ impl ProgramData {
         if entry.lat_lon.is_some() && entry.altitude.is_some() {
             let distance = get_distance(&self.observer_location, entry, false);
             self.max_distance = Some(self.max_distance.unwrap_or(meters(0.0)).max(distance));
+        }
+
+        if important_data_changed && entry.state == State::Selected {
+            send_data(entry, &self.observer_location, &mut self.data_senders);
         }
 
         let num_displayed_aircraft = self.aircraft

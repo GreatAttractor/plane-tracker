@@ -9,6 +9,7 @@
 use cgmath::Deg;
 use crate::{data, data::ProgramData};
 use gtk4 as gtk;
+use gtk::{glib, glib::clone};
 use pointing_utils::{LatLon, uom};
 use std::{cell::RefCell, error::Error, rc::Rc, io::prelude::*};
 use uom::{si::f64, si::{length, velocity}};
@@ -137,4 +138,39 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
     }
 
     Ok(None)
+}
+
+pub fn start(
+    server_address: String,
+    rec_output: Option<std::fs::File>,
+    program_data_rc: &Rc<RefCell<ProgramData>>
+) {
+    let stream = std::net::TcpStream::connect(&server_address).unwrap();
+
+    let (sender_worker, receiver_main) = glib::MainContext::channel(glib::Priority::DEFAULT);
+    receiver_main.attach(None, clone!(@weak program_data_rc => @default-panic, move |msg| {
+        on_data_received(&program_data_rc, msg);
+        glib::ControlFlow::Continue
+    }));
+
+    let stream2 = stream.try_clone().unwrap();
+    let worker = Some(std::thread::spawn(move || {
+        data_receiver(stream2, rec_output, sender_worker);
+    }));
+
+    program_data_rc.borrow_mut().data_receiver = Some(data::DataReceiver{ server_address, worker, stream });
+}
+
+/// Returns server address if receiver was running.
+pub fn stop(program_data_rc: &Rc<RefCell<ProgramData>>) -> Option<String> {
+    let mut pd = program_data_rc.borrow_mut();
+    if let Some(data_receiver) = &mut pd.data_receiver {
+        data_receiver.stream.shutdown(std::net::Shutdown::Both).unwrap();
+        data_receiver.worker.take().unwrap().join().unwrap();
+        let addr = data_receiver.server_address.clone();
+        pd.data_receiver = None;
+        Some(addr)
+    } else {
+        None
+    }
 }
