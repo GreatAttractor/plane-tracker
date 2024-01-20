@@ -93,10 +93,10 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
                 return Err(format!("MSG,{} has empty field 10", msg_type::ES_IDENTIFICATION_AND_CATEGORY).into());
             }
 
-            return Ok(Some(data::Sbs1Message::EsIdentificationAndCategory(data::EsIdentificationAndCategory{
+            return Ok(Some(data::Sbs1Message::EsIdentificationAndCategory{
                 id,
                 callsign: fields[10].into()
-            })));
+            }));
         },
 
         msg_type::ES_AIRBORNE_POSITION_MESSAGE => {
@@ -113,25 +113,19 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
                 (Ok(_), Err(e)) | (Err(e), Ok(_)) => return Err(Box::new(e))
             };
 
-            return Ok(Some(data::Sbs1Message::EsAirbornePosition(data::EsAirbornePosition{
-                id, altitude, lat_lon
-            })));
+            return Ok(Some(data::Sbs1Message::EsAirbornePosition{id, altitude, lat_lon}));
         },
 
         msg_type::ES_AIRBORNE_VELOCITY_MESSAGE => {
             let ground_speed = knots(fields[12].parse::<f64>()?);
             let track = Deg(fields[13].parse::<f64>()?);
 
-            return Ok(Some(data::Sbs1Message::EsAirborneVelocity(data::EsAirborneVelocity{
-                id, ground_speed, track
-            })));
+            return Ok(Some(data::Sbs1Message::EsAirborneVelocity{ id, ground_speed, track }));
         },
 
         msg_type::SURVEILLANCE_ALT_MESSAGE => {
             let altitude = feet(fields[11].parse::<u32>()? as f64);
-            return Ok(Some(data::Sbs1Message::SurveillanceAltitude(data::SurveillanceAltitude{
-                id, altitude
-            })));
+            return Ok(Some(data::Sbs1Message::SurveillanceAltitude{ id, altitude }));
         },
 
         _ => ()

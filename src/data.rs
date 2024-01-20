@@ -39,46 +39,37 @@ impl std::str::FromStr for ModeSTransponderCode {
 }
 
 #[derive(Debug)]
-pub struct EsIdentificationAndCategory {
-    pub id: ModeSTransponderCode,
-    pub callsign: String
-}
-
-#[derive(Debug)]
-pub struct EsAirbornePosition {
-    pub id: ModeSTransponderCode,
-    pub altitude: Option<f64::Length>,
-    pub lat_lon: Option<LatLon>
-}
-
-#[derive(Debug)]
-pub struct EsAirborneVelocity {
-    pub id: ModeSTransponderCode,
-    pub ground_speed: f64::Velocity,
-    pub track: Deg<f64>
-}
-
-#[derive(Debug)]
-pub struct SurveillanceAltitude {
-    pub id: ModeSTransponderCode,
-    pub altitude: f64::Length
-}
-
-#[derive(Debug)]
 pub enum Sbs1Message {
-    EsIdentificationAndCategory(EsIdentificationAndCategory),
-    EsAirbornePosition(EsAirbornePosition),
-    EsAirborneVelocity(EsAirborneVelocity),
-    SurveillanceAltitude(SurveillanceAltitude)
+    EsIdentificationAndCategory{
+        id: ModeSTransponderCode,
+        callsign: String
+    },
+
+    EsAirbornePosition{
+        id: ModeSTransponderCode,
+        altitude: Option<f64::Length>,
+        lat_lon: Option<LatLon>
+    },
+
+    EsAirborneVelocity{
+        id: ModeSTransponderCode,
+        ground_speed: f64::Velocity,
+        track: Deg<f64>
+    },
+
+    SurveillanceAltitude{
+        id: ModeSTransponderCode,
+        altitude: f64::Length
+    }
 }
 
 impl Sbs1Message {
     pub fn id(&self) -> ModeSTransponderCode {
         match self {
-            Sbs1Message::EsIdentificationAndCategory(msg) => msg.id,
-            Sbs1Message::EsAirbornePosition(msg) => msg.id,
-            Sbs1Message::EsAirborneVelocity(msg) => msg.id,
-            Sbs1Message::SurveillanceAltitude(msg) => msg.id,
+            Sbs1Message::EsIdentificationAndCategory{ id, .. } => *id,
+            Sbs1Message::EsAirbornePosition{ id, .. } => *id,
+            Sbs1Message::EsAirborneVelocity{ id, .. } => *id,
+            Sbs1Message::SurveillanceAltitude{ id, .. } => *id,
         }
     }
 }
@@ -185,12 +176,12 @@ impl ProgramData {
         });
 
         match msg {
-            Sbs1Message::EsIdentificationAndCategory(msg) => {
-                entry.callsign = Some(msg.callsign);
+            Sbs1Message::EsIdentificationAndCategory{ callsign, .. } => {
+                entry.callsign = Some(callsign);
             },
 
-            Sbs1Message::EsAirbornePosition(msg) => {
-                if let Some(lat_lon) = msg.lat_lon {
+            Sbs1Message::EsAirbornePosition{ lat_lon, altitude, .. } => {
+                if let Some(lat_lon) = lat_lon {
                     if self.config.filter_ooo_messages().unwrap_or(true)
                         && entry.lat_lon.is_some()
                         && entry.track.is_some()
@@ -206,18 +197,18 @@ impl ProgramData {
                     }
                 }
 
-                entry.altitude = msg.altitude;
+                entry.altitude = altitude;
                 important_data_changed = true;
             },
 
-            Sbs1Message::EsAirborneVelocity(msg) => {
-                entry.ground_speed = Some(msg.ground_speed);
-                entry.track = Some(msg.track);
+            Sbs1Message::EsAirborneVelocity{ ground_speed, track, .. } => {
+                entry.ground_speed = Some(ground_speed);
+                entry.track = Some(track);
                 important_data_changed = true;
             },
 
-            Sbs1Message::SurveillanceAltitude(msg) => {
-                entry.altitude = Some(msg.altitude);
+            Sbs1Message::SurveillanceAltitude{ altitude, .. } => {
+                entry.altitude = Some(altitude);
                 important_data_changed = true;
             }
         }
