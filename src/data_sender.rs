@@ -36,7 +36,12 @@ pub fn send_data(aircraft: &Aircraft, observer: &GeoPos, streams: &mut [std::net
         )
     );
 
-    let message = TargetInfoMessage{ position, velocity, track: *aircraft.track.as_ref().unwrap() };
+    let message = TargetInfoMessage{
+        position,
+        velocity,
+        track: *aircraft.track.as_ref().unwrap(),
+        altitude: aircraft_geo_pos.elevation
+    };
 
     // TODO: ignore disconnected
     for stream in streams {
