@@ -32,7 +32,7 @@ fn knots(value: f64) -> f64::Velocity {
 pub fn data_receiver(
     stream: std::net::TcpStream,
     rec_output: Option<std::fs::File>,
-    sender: gtk::glib::Sender<data::Sbs1Message>
+    sender: gtk::glib::Sender<data::SbsMessage>
 ) {
     let buf_reader = std::io::BufReader::new(stream);
     let mut buf_writer = if let Some(recording) = rec_output { Some(std::io::BufWriter::new(recording)) } else { None };
@@ -47,7 +47,7 @@ pub fn data_receiver(
                 ).as_bytes()); //TODO: handle errors
             }
 
-            match parse_sbs1_message(&line) {
+            match parse_sbs_message(&line) {
                 Ok(m) => if let Some(m) = m { sender.send(m).unwrap(); },
                 Err(e) => println!("Error parsing SBS1 message \"{}\": {}.", line, e)
             }
@@ -55,12 +55,12 @@ pub fn data_receiver(
     }
 }
 
-pub fn on_data_received(program_data_rc: &Rc<RefCell<ProgramData>>, msg: data::Sbs1Message) {
+pub fn on_data_received(program_data_rc: &Rc<RefCell<ProgramData>>, msg: data::SbsMessage) {
     program_data_rc.borrow_mut().update(msg);
 }
 
 /// Returns `None` for unsupported message types.
-fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Error>> {
+fn parse_sbs_message(msg: &str) -> Result<Option<data::SbsMessage>, Box<dyn Error>> {
     let fields: Vec<&str> = msg.split(',').collect();
 
     if fields.is_empty() { return Err("empty message".into()); }
@@ -93,7 +93,7 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
                 return Err(format!("MSG,{} has empty field 10", msg_type::ES_IDENTIFICATION_AND_CATEGORY).into());
             }
 
-            return Ok(Some(data::Sbs1Message::EsIdentificationAndCategory{
+            return Ok(Some(data::SbsMessage::EsIdentificationAndCategory{
                 id,
                 callsign: fields[10].into()
             }));
@@ -113,19 +113,19 @@ fn parse_sbs1_message(msg: &str) -> Result<Option<data::Sbs1Message>, Box<dyn Er
                 (Ok(_), Err(e)) | (Err(e), Ok(_)) => return Err(Box::new(e))
             };
 
-            return Ok(Some(data::Sbs1Message::EsAirbornePosition{id, altitude, lat_lon}));
+            return Ok(Some(data::SbsMessage::EsAirbornePosition{id, altitude, lat_lon}));
         },
 
         msg_type::ES_AIRBORNE_VELOCITY_MESSAGE => {
             let ground_speed = knots(fields[12].parse::<f64>()?);
             let track = Deg(fields[13].parse::<f64>()?);
 
-            return Ok(Some(data::Sbs1Message::EsAirborneVelocity{ id, ground_speed, track }));
+            return Ok(Some(data::SbsMessage::EsAirborneVelocity{ id, ground_speed, track }));
         },
 
         msg_type::SURVEILLANCE_ALT_MESSAGE => {
             let altitude = feet(fields[11].parse::<u32>()? as f64);
-            return Ok(Some(data::Sbs1Message::SurveillanceAltitude{ id, altitude }));
+            return Ok(Some(data::SbsMessage::SurveillanceAltitude{ id, altitude }));
         },
 
         _ => ()

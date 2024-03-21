@@ -329,7 +329,7 @@ fn on_connect_btn(main_wnd: &gtk::ApplicationWindow, program_data_rc: &Rc<RefCel
         gtk::ButtonsType::OkCancel,
         "Server address:"
     );
-    dialog.set_title(Some("Connect to SBS1 server"));
+    dialog.set_title(Some("Connect to SBS server"));
     let server_address = gtk::Text::new();
     server_address.set_text(&program_data_rc.borrow().config.server_address().unwrap_or("".into()));
     set_all_margins(&dialog.content_area(), PADDING);

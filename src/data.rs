@@ -39,7 +39,7 @@ impl std::str::FromStr for ModeSTransponderCode {
 }
 
 #[derive(Debug)]
-pub enum Sbs1Message {
+pub enum SbsMessage {
     EsIdentificationAndCategory{
         id: ModeSTransponderCode,
         callsign: String
@@ -63,13 +63,13 @@ pub enum Sbs1Message {
     }
 }
 
-impl Sbs1Message {
+impl SbsMessage {
     pub fn id(&self) -> ModeSTransponderCode {
         match self {
-            Sbs1Message::EsIdentificationAndCategory{ id, .. } => *id,
-            Sbs1Message::EsAirbornePosition{ id, .. } => *id,
-            Sbs1Message::EsAirborneVelocity{ id, .. } => *id,
-            Sbs1Message::SurveillanceAltitude{ id, .. } => *id,
+            SbsMessage::EsIdentificationAndCategory{ id, .. } => *id,
+            SbsMessage::EsAirbornePosition{ id, .. } => *id,
+            SbsMessage::EsAirborneVelocity{ id, .. } => *id,
+            SbsMessage::SurveillanceAltitude{ id, .. } => *id,
         }
     }
 }
@@ -119,7 +119,7 @@ impl Aircraft {
 pub struct DataReceiver {
     pub server_address: String,
     pub worker: Option<std::thread::JoinHandle<()>>, // always `Some`
-    pub stream: std::net::TcpStream // stream providing SBS1 messages
+    pub stream: std::net::TcpStream // stream providing SBS messages
 }
 
 pub struct ProgramData {
@@ -160,7 +160,7 @@ impl ProgramData {
         }
     }
 
-    pub fn update(&mut self, msg: Sbs1Message) {
+    pub fn update(&mut self, msg: SbsMessage) {
         let mut important_data_changed = false;
 
         let entry = self.aircraft.entry(msg.id()).or_insert(Aircraft{
@@ -176,11 +176,11 @@ impl ProgramData {
         });
 
         match msg {
-            Sbs1Message::EsIdentificationAndCategory{ callsign, .. } => {
+            SbsMessage::EsIdentificationAndCategory{ callsign, .. } => {
                 entry.callsign = Some(callsign);
             },
 
-            Sbs1Message::EsAirbornePosition{ lat_lon, altitude, .. } => {
+            SbsMessage::EsAirbornePosition{ lat_lon, altitude, .. } => {
                 if let Some(lat_lon) = lat_lon {
                     if self.config.filter_ooo_messages().unwrap_or(true)
                         && entry.lat_lon.is_some()
@@ -201,13 +201,13 @@ impl ProgramData {
                 important_data_changed = true;
             },
 
-            Sbs1Message::EsAirborneVelocity{ ground_speed, track, .. } => {
+            SbsMessage::EsAirborneVelocity{ ground_speed, track, .. } => {
                 entry.ground_speed = Some(ground_speed);
                 entry.track = Some(track);
                 important_data_changed = true;
             },
 
-            Sbs1Message::SurveillanceAltitude{ altitude, .. } => {
+            SbsMessage::SurveillanceAltitude{ altitude, .. } => {
                 entry.altitude = Some(altitude);
                 important_data_changed = true;
             }

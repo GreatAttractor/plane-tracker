@@ -8,7 +8,7 @@ Copyright (C) 2023-2024 Filip Szczerek (ga.software@yahoo.com)
 
 # Introduction
 
-Plots aircraft based on received SBS1 messages.
+Plots aircraft based on received SBS messages.
 
 
 # Building
