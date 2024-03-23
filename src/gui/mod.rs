@@ -28,6 +28,23 @@ mod colors {
 }
 const INACTIVE_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
 
+#[derive(Copy, Clone, PartialEq, PartialOrd)]
+pub enum AircraftInfoLevel {
+    Basic,
+    Medium,
+    All
+}
+
+impl AircraftInfoLevel {
+    pub fn next_cyclic(&self) -> AircraftInfoLevel {
+        match self {
+            AircraftInfoLevel::Basic => AircraftInfoLevel::Medium,
+            AircraftInfoLevel::Medium => AircraftInfoLevel::All,
+            AircraftInfoLevel::All => AircraftInfoLevel::Basic
+        }
+    }
+}
+
 pub struct StatusBarFields {
     server_address: gtk::Label,
     pub num_aircraft: gtk::Label,
@@ -37,7 +54,8 @@ pub struct StatusBarFields {
 pub struct GuiData {
     pub drawing_area: gtk::DrawingArea,
     pub plot_range: f64::Length, // corresponds to draw area width
-    pub status_bar_fields: StatusBarFields
+    pub status_bar_fields: StatusBarFields,
+    pub info_level: AircraftInfoLevel
 }
 
 struct RestoreTransform<'a> {
@@ -187,9 +205,12 @@ fn draw_aircraft_info(
     aircraft: &data::Aircraft,
     observer: &GeoPos,
     interpolate: bool,
-    text_scale: f64
+    text_scale: f64,
+    mut level: AircraftInfoLevel
 ) {
     let _rt = RestoreTransform::new(ctx);
+
+    if aircraft.state == data::State::Selected { level = AircraftInfoLevel::All; }
 
     // all values in pixels
     const FONT_SIZE: f64 = 20.0;
@@ -199,35 +220,50 @@ fn draw_aircraft_info(
     ctx.set_font_size(FONT_SIZE * text_scale);
     let h_offs = HORZ_OFFSET * text_scale;
     let l_spc = LINE_SPACING * text_scale;
+    let mut info_line_idx = 0;
 
-    ctx.move_to(h_offs, 0.0);
+    ctx.move_to(h_offs, info_line_idx as f64 * l_spc);
     if let Some(callsign) = &aircraft.callsign {
         ctx.show_text(&callsign).unwrap();
     }
+    info_line_idx += 1;
 
-    ctx.move_to(h_offs, 1.0 * l_spc);
-    if let Some(track) = &aircraft.track {
-        ctx.show_text(&format!("{:.0}°", track.0)).unwrap();
-    }
-
-    ctx.move_to(h_offs, 2.0 * l_spc);
+    ctx.move_to(h_offs, info_line_idx as f64 * l_spc);
     if let Some(altitude) = &aircraft.altitude {
         ctx.show_text(&format!("{:.0} m", altitude.get::<length::meter>())).unwrap();
     }
+    info_line_idx += 1;
 
-    ctx.move_to(h_offs, 3.0 * l_spc);
-    if let Some(ground_speed) = &aircraft.ground_speed {
-        ctx.show_text(&format!("{:.0} km/h", ground_speed.get::<velocity::kilometer_per_hour>())).unwrap();
+    if level >= AircraftInfoLevel::Medium {
+        ctx.move_to(h_offs, info_line_idx as f64 * l_spc);
+        if let Some(ground_speed) = &aircraft.ground_speed {
+            ctx.show_text(&format!("{:.0} km/h", ground_speed.get::<velocity::kilometer_per_hour>())).unwrap();
+        }
+        info_line_idx += 1;
     }
 
-    ctx.move_to(h_offs, 4.0 * l_spc);
-    if aircraft.altitude.is_some() && aircraft.lat_lon.is_some() {
-        let distance = data::get_distance(observer, aircraft, interpolate);
-        ctx.show_text(&format!("{:.1} km", distance.get::<length::kilometer>())).unwrap();
+    if level >= AircraftInfoLevel::All {
+        ctx.move_to(h_offs, info_line_idx as f64 * l_spc);
+        if aircraft.altitude.is_some() && aircraft.lat_lon.is_some() {
+            let distance = data::get_distance(observer, aircraft, interpolate);
+            ctx.show_text(&format!("{:.1} km", distance.get::<length::kilometer>())).unwrap();
+        }
+        info_line_idx += 1;
     }
 
-    ctx.move_to(h_offs, 5.0 * l_spc);
-    ctx.show_text(&format!("{:.1} s", aircraft.t_last_update.elapsed().as_secs_f64())).unwrap();
+    if level >= AircraftInfoLevel::All {
+        ctx.move_to(h_offs, info_line_idx as f64 * l_spc);
+        if let Some(track) = &aircraft.track {
+            ctx.show_text(&format!("{:.0}°", track.0)).unwrap();
+        }
+        info_line_idx += 1;
+    }
+
+    if level >= AircraftInfoLevel::All {
+        ctx.move_to(h_offs, info_line_idx as f64 * l_spc);
+        ctx.show_text(&format!("{:.1} s", aircraft.t_last_update.elapsed().as_secs_f64())).unwrap();
+        info_line_idx += 1;
+    }
 }
 
 fn draw_single_aircraft(ctx: &cairo::Context, aircraft: &data::Aircraft, scale: f64, text_scale: f64, pd: &ProgramData) {
@@ -267,7 +303,9 @@ fn draw_single_aircraft(ctx: &cairo::Context, aircraft: &data::Aircraft, scale: 
     ctx.set_source_rgb(color.0, color.1, color.2);
     draw_aircraft_icon(ctx, track, text_scale);
     ctx.scale(1.0, -1.0);
-    draw_aircraft_info(ctx, aircraft, &pd.observer_location, interpolate, text_scale);
+    draw_aircraft_info(
+        ctx, aircraft, &pd.observer_location, interpolate, text_scale, pd.gui.as_ref().unwrap().info_level
+    );
 }
 
 /// Current transform of `ctx`: Y points up, observer at (0, 0), global scale (meters).
@@ -397,6 +435,14 @@ fn create_toolbar(
         program_data_rc.borrow().config.set_interpolate_positions(checkbox.is_active());
     }));
     toolbar.append(&interpolate);
+
+    let info_level = gtk::Button::builder().label("info level").build();
+    info_level.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
+        let mut pd = program_data_rc.borrow_mut();
+        let gui = pd.gui.as_mut().unwrap();
+        gui.info_level = gui.info_level.next_cyclic();
+    }));
+    toolbar.append(&info_level);
 
     let zoom_in = gtk::Button::builder().label("zoom+").build();
     zoom_in.connect_clicked(clone!(@weak program_data_rc => @default-panic, move |_| {
@@ -575,7 +621,8 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
     program_data_rc.borrow_mut().gui = Some(GuiData{
         drawing_area: drawing_area.clone(),
         plot_range: f64::Length::new::<length::kilometer>(200.0),
-        status_bar_fields
+        status_bar_fields,
+        info_level: AircraftInfoLevel::Basic
     });
 
     window.present();
