@@ -19,8 +19,6 @@ use gtk::glib;
 use gtk::glib::clone;
 use std::{cell::RefCell, rc::Rc};
 
-const DATA_SENDER_PORT: u16 = 45500;
-
 fn main() -> glib::ExitCode {
     let application = gtk::Application::builder()
         .application_id("ga_software.plane_tracker")
@@ -51,7 +49,7 @@ fn set_up_data_sender(program_data_rc: &Rc<RefCell<ProgramData>>) {
         glib::ControlFlow::Continue
     }));
 
-    data_sender::start_listener(DATA_SENDER_PORT, sender_worker);
+    data_sender::start_listener(program_data_rc.borrow().config.data_sender_port(), sender_worker);
 }
 
 fn set_up_timer(program_data_rc: &Rc<RefCell<ProgramData>>) {

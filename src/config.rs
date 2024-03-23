@@ -13,6 +13,8 @@ use pointing_utils::{GeoPos, LatLon, uom};
 use std::error::Error;
 use uom::{si::f64, si::length};
 
+const DEF_DATA_SENDER_PORT: u16 = 45500;
+
 mod groups {
     pub const UI: &str = "UI";
     pub const MAIN: &str = "Main";
@@ -24,6 +26,7 @@ mod keys {
     pub const SERVER_ADDRRESS: &str = "ServerAddress";
     pub const FILTER_OOO_MSGS: &str = "FilterOoOMessages";
     pub const INTERPOLATE_POSITIONS: &str = "InterpolatePositions";
+    pub const DATA_SENDER_PORT: &str = "DataSenderPort";
 
     // group: UI
     pub const MAIN_WINDOW_POS_SIZE: &str = "MainWindowPosSize";
@@ -148,6 +151,10 @@ impl Configuration {
 
     pub fn interpolate_positions(&self) -> Option<bool> {
         self.key_file.boolean(groups::MAIN, keys::INTERPOLATE_POSITIONS).ok()
+    }
+
+    pub fn data_sender_port(&self) -> u16 {
+        self.key_file.integer(groups::MAIN, keys::DATA_SENDER_PORT).map(|i| i as u16).unwrap_or(DEF_DATA_SENDER_PORT)
     }
 }
 
