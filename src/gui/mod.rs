@@ -503,6 +503,15 @@ fn on_zoom(steps: i32, program_data_rc: &Rc<RefCell<ProgramData>>) {
 }
 
 pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<ProgramData>>) {
+    const RADAR_VIEW_CSS_CLASS: &'static str = "radar-view";
+    let provider = gtk::CssProvider::new();
+    provider.load_from_data(const_format::concatcp!(".", RADAR_VIEW_CSS_CLASS, " { background: #000000; }"));
+    gtk::style_context_add_provider_for_display(
+        &gtk::gdk::Display::default().expect("Could not connect to a display."),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
+
     let contents = gtk::Box::new(gtk::Orientation::Vertical, SPACING);
 
     let window = gtk::ApplicationWindow::builder()
@@ -541,6 +550,7 @@ pub fn init_main_window(app: &gtk::Application, program_data_rc: &Rc<RefCell<Pro
     drawing_area.set_draw_func(clone!(@weak program_data_rc => @default-panic, move |_widget, ctx, width, height| {
         on_draw_main_view(ctx, width, height, &program_data_rc);
     }));
+    drawing_area.add_css_class(RADAR_VIEW_CSS_CLASS);
 
     let evt_ctrl_scroll = gtk::EventControllerScroll::builder().flags(gtk::EventControllerScrollFlags::BOTH_AXES).build();
     evt_ctrl_scroll.connect_scroll(clone!(@weak program_data_rc => @default-panic, move |_, _, y| {
